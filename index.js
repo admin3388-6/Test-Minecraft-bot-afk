@@ -16,11 +16,8 @@ function createBot() {
     version: SERVER_VERSION,
   });
 
-  // **الحل الحاسم للاستقرار:** تعطيل معالجة حزم الشات الواردة لمنع التعطل الداخلي
-  // هذا يمنع خطأ 'unknown chat format code' ويمنع أي تفاعل مع اللاعبين.
-  bot._client.on('system_chat', () => {}); 
-  bot._client.on('player_chat', () => {}); 
-  bot.on('message', (message) => {}); // يمنع التعطل على مستوى Mineflayer
+  // **تمت إزالة جميع محاولات منع الشات الفاشلة**
+  // **تمت إزالة جميع أوامر الشات والإعلانات**
 
   // عند تسجيل الدخول
   bot.on('login', () => {
@@ -29,7 +26,6 @@ function createBot() {
 
   // عند دخول البوت للعالم
   bot.on('spawn', () => {
-    // **تم إزالة جميع أوامر الإعلان الدورية والرسائل الترحيبية**
     console.log('Bot is spawned and AFK interval started (Silent Mode).');
   });
 
@@ -41,16 +37,14 @@ function createBot() {
     setTimeout(() => bot.setControlState(dir, false), 1000);
   }, 5000);
 
-  // **تم إزالة حماية الموت (bot.chat('/home')) لمنع أي أوامر شات متبقية**
-  // bot.on('health', () => { ... });
-
   // تسجيل الأخطاء
   bot.on('error', err => console.log(`Error: ${err}`));
 
   // عند قطع الاتصال، إعادة إنشاء البوت تلقائيًا
   bot.on('end', () => {
     console.log('Bot disconnected, reconnecting in 5s...');
-    setTimeout(createBot, 5000);
+    // **نعتمد على إعادة الاتصال السريعة**
+    setTimeout(createBot, 5000); 
   });
 }
 
