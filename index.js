@@ -5,12 +5,15 @@ const mineflayer = require('mineflayer');
 const BOT_USERNAME = 'SkyDataBot'; 
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
-const SERVER_VERSION = '1.21'; // نستخدم 1.21 لزيادة التوافق
+const SERVER_VERSION = '1.21'; // نستخدم 1.21
 
 // رابط الديسكورد ورسالة نصية بسيطة (للتوافق المطلق)
 const DISCORD_LINK = 'https://discord.gg/6m3c2up4p3';
-// رسالة نصية بسيطة جداً، بدون رموز لون لمنع خطأ 'Illegal characters in chat'
 const SIMPLE_DISCORD_MESSAGE = `Join the SkyData Discord server: ${DISCORD_LINK}`; 
+
+// الأمر الذي سيتم تنفيذه: البوت يقول (say) الرسالة
+// *ملاحظة: يجب أن يكون البوت OP (مشرف) ليعمل الأمر /say*
+const SAY_COMMAND = `/say ${SIMPLE_DISCORD_MESSAGE}`; 
 
 // دالة إنشاء البوت
 function createBot() {
@@ -31,9 +34,9 @@ function createBot() {
     
     // تفعيل إرسال رسالة الديسكورد كل 1 دقيقة (60,000 ملي ثانية)
     setInterval(() => {
-      // نرسل رسالة شات بسيطة وغير منسقة
-      bot.chat(SIMPLE_DISCORD_MESSAGE); 
-      console.log('Simple Discord link sent.');
+      // نستخدم أمر /say لتفادي مشاكل bot.chat()
+      bot.chat(SAY_COMMAND); 
+      console.log('Say command sent.');
     }, 60 * 1000); // 1 دقيقة
 
     console.log('Bot is spawned and AFK interval started.');
