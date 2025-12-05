@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skydata Bot Control</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+
+<div class="max-w-3xl mx-auto p-6">
+  <h1 class="text-3xl font-bold mb-4">Skydata Bot Control Panel</h1>
+
+  <div class="mb-4">
+    <button id="startBtn" class="bg-green-500 px-4 py-2 rounded mr-2">Start Bot</button>
+    <button id="stopBtn" class="bg-red-500 px-4 py-2 rounded">Stop Bot</button>
+  </div>
+
+  <h2 class="text-xl font-semibold mb-2">Bot Logs</h2>
+  <pre id="logs" class="bg-black p-4 rounded h-64 overflow-auto"></pre>
+</div>
+
+<script>
+const logsEl = document.getElementById("logs");
+
+document.getElementById("startBtn").addEventListener("click", async () => {
+  const res = await fetch("/start", { method: "POST" });
+  const text = await res.text();
+  logsEl.textContent += `[START] ${text}\n`;
+});
+
+document.getElementById("stopBtn").addEventListener("click", async () => {
+  const res = await fetch("/stop", { method: "POST" });
+  const text = await res.text();
+  logsEl.textContent += `[STOP] ${text}\n`;
+});
+</script>
+
+</body>
+</html>
