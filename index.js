@@ -5,7 +5,7 @@ const mineflayer = require('mineflayer');
 const BOT_USERNAME = 'SkyDataBot'; // اسم البوت بدون مسافات
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
-const SERVER_VERSION = '1.21.10';
+const SERVER_VERSION = '1.21';
 
 // دالة إنشاء البوت
 function createBot() {
