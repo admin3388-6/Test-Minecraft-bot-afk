@@ -14,10 +14,9 @@ function createBot() {
     port: SERVER_PORT,
     username: BOT_USERNAME,
     version: SERVER_VERSION,
+    // **الحل الأخير:** إخفاء أخطاء فك تشفير الحزم (قد يسمح بالتجاوز)
+    hideErrors: true 
   });
-
-  // **تمت إزالة جميع محاولات منع الشات الفاشلة**
-  // **تمت إزالة جميع أوامر الشات والإعلانات**
 
   // عند تسجيل الدخول
   bot.on('login', () => {
@@ -37,13 +36,13 @@ function createBot() {
     setTimeout(() => bot.setControlState(dir, false), 1000);
   }, 5000);
 
-  // تسجيل الأخطاء
+  // تسجيل الأخطاء (نحتفظ بها لمعرفة ما إذا كانت hideErrors تعمل)
   bot.on('error', err => console.log(`Error: ${err}`));
 
   // عند قطع الاتصال، إعادة إنشاء البوت تلقائيًا
   bot.on('end', () => {
     console.log('Bot disconnected, reconnecting in 5s...');
-    // **نعتمد على إعادة الاتصال السريعة**
+    // نبقي على إعادة الاتصال السريعة كضمان أخير
     setTimeout(createBot, 5000); 
   });
 }
