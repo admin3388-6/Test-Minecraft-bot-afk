@@ -5,14 +5,13 @@ const mineflayer = require('mineflayer');
 const BOT_USERNAME = 'SkyDataBot'; 
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
-const SERVER_VERSION = '1.21'; // نستخدم 1.21
+const SERVER_VERSION = '1.21'; 
 
-// رابط الديسكورد ورسالة نصية بسيطة (للتوافق المطلق)
+// رابط الديسكورد ورسالة نصية بسيطة
 const DISCORD_LINK = 'https://discord.gg/6m3c2up4p3';
 const SIMPLE_DISCORD_MESSAGE = `Join the SkyData Discord server: ${DISCORD_LINK}`; 
 
 // الأمر الذي سيتم تنفيذه: البوت يقول (say) الرسالة
-// *ملاحظة: يجب أن يكون البوت OP (مشرف) ليعمل الأمر /say*
 const SAY_COMMAND = `/say ${SIMPLE_DISCORD_MESSAGE}`; 
 
 // دالة إنشاء البوت
@@ -22,7 +21,20 @@ function createBot() {
     port: SERVER_PORT,
     username: BOT_USERNAME,
     version: SERVER_VERSION,
+    // **خيار جديد:** لتجاهل قراءة الشات
+    // هذا الخيار قد يحل مشكلة التعطل الداخلي
+    hideErrors: true 
   });
+
+  // **الحل الحاسم 1:** منع Mineflayer من معالجة حزم الشات الواردة
+  bot._client.on('chat', (packet) => {
+    // نتلقى حزمة الشات لكن لا نفعل شيئاً بها، نمنع التعطل
+    // يمكن هنا إضافة معالجة يدوية للحزم إذا أردنا
+  });
+  
+  // **الحل الحاسم 2:** إزالة مُعالج الشات التلقائي
+  bot._client.removeListener('chat', bot._client.listeners('chat').find(listener => listener.name === 'onChat'));
+
 
   // عند تسجيل الدخول
   bot.on('login', () => {
@@ -56,11 +68,6 @@ function createBot() {
       bot.chat('/home');
     }
   });
-
-  // **تم تعطيل معالج الشات**
-  // bot.on('chat', (username, message) => {
-  //   console.log(`${username}: ${message}`);
-  // });
 
   // تسجيل الأخطاء
   bot.on('error', err => console.log(`Error: ${err}`));
