@@ -7,10 +7,10 @@ const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.21'; 
 
-// رابط الديسكورد ورسالة نصية ملونة
+// رابط الديسكورد ورسالة نصية بسيطة جداً
 const DISCORD_LINK = 'https://discord.gg/6m3c2up4p3';
-// الرسالة ملونة باللون الأخضر (§a)
-const SIMPLE_DISCORD_MESSAGE = `§aJoin the SkyData Discord server: ${DISCORD_LINK}`; 
+// تم إزالة رمز اللون (§a) نهائياً لتجنب خطأ 'Illegal characters in chat'
+const SIMPLE_DISCORD_MESSAGE = `Join the SkyData Discord server: ${DISCORD_LINK}`; 
 
 // الأمر الذي سيتم تنفيذه: البوت يقول (say) الرسالة
 // *ملاحظة: يجب أن يكون البوت OP (مشرف) ليعمل الأمر /say*
@@ -26,9 +26,9 @@ function createBot() {
   });
 
   // **الحل الحاسم للاستقرار:** تجاهل كل الرسائل الواردة لمنع تعطل Mineflayer
-  // عند محاولة قراءة تنسيق الشات المعقد من سيرفر Purpur.
+  // هذا يمنع خطأ "unknown chat format code: [object Object]"
   bot.on('message', (message) => {
-    // لا نفعل شيئاً هنا. هذا يمنع تعطل البوت عند إرسال أو استقبال الشات.
+    // لا نفعل شيئاً هنا.
   });
 
 
@@ -42,7 +42,7 @@ function createBot() {
     
     // تفعيل إرسال رسالة الديسكورد كل 1 دقيقة (60,000 ملي ثانية)
     setInterval(() => {
-      // نستخدم أمر /say لتفادي مشاكل bot.chat()
+      // نستخدم أمر /say مع رسالة غير ملونة
       bot.chat(SAY_COMMAND); 
       console.log('Say command sent.');
     }, 60 * 1000); // 1 دقيقة
