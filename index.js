@@ -23,7 +23,8 @@ function createBot() {
 
   // عند دخول البوت للعالم
   bot.on('spawn', () => {
-    bot.chat('§9Welcome to SkyData world! Enjoy'); // رسالة ترحيب باللون الأزرق
+    // تم إزالة (أو تعطيل) رسالة الترحيب التي قد تسبب المشكلة في Aternos
+    // bot.chat('§9Welcome to SkyData world! Enjoy'); 
   });
 
   // تحركات عشوائية كل 5 ثواني
