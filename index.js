@@ -15,7 +15,7 @@ const botConfig = {
   host: "Skydata.aternos.me",
   port: 28068,
   username: "skydata bot",
-  version: false,
+  version: '1.21.10',
   welcomeMessage: "Welcome to skydata world Enjoy"
 };
 
