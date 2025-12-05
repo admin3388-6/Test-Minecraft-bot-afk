@@ -2,31 +2,21 @@
 const mineflayer = require('mineflayer');
 
 // إعدادات البوت
-const BOT_USERNAME = 'SkyDataBot'; // اسم البوت باللون الأحمر في قائمة اللاعبين (Tab List)
+const BOT_USERNAME = 'SkyDataBot'; 
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
-const SERVER_VERSION = '1.21'; // تم التعديل إلى الإصدار الرئيسي لزيادة التوافق مع Aternos
+const SERVER_VERSION = '1.21'; // نتركه 1.21 لتجربة أفضل توافق ممكن
 
 // رابط الديسكورد و إعدادات الرسالة
 const DISCORD_LINK = 'https://discord.gg/6m3c2up4p3';
 
-// رسالة JSON قابلة للضغط باللغة الإنجليزية (لتجنب مشاكل الرموز)
-const DISCORD_MESSAGE = {
-  text: 'Join the SkyData Discord server: ', 
-  color: 'green',
-  extra: [
-    { text: '[Click Here to Join]', color: 'aqua', bold: true, 
-      clickEvent: {
-        action: 'open_url',
-        value: DISCORD_LINK
-      },
-      hoverEvent: {
-        action: 'show_text',
-        value: { text: DISCORD_LINK, color: 'aqua' }
-      }
-    }
-  ]
-};
+// رسالة JSON المنسقة (ككائن نصي واحد ليتم تنفيذه بواسطة tellraw)
+// تم تبسيط الكائن ليتناسب مع أمر tellraw
+const JSON_TEXT = '{"text":"Join the SkyData Discord server: ","color":"green","extra":[{"text":"[Click Here to Join]","color":"aqua","bold":true,"clickEvent":{"action":"open_url","value":"' + DISCORD_LINK + '"},"hoverEvent":{"action":"show_text","value":{"text":"' + DISCORD_LINK + '","color":"aqua"}}}]}';
+
+// الأمر الكامل الذي سيتم تنفيذه كل 5 دقائق
+const TELLRAW_COMMAND = `/tellraw @a ${JSON_TEXT}`;
+
 
 // دالة إنشاء البوت
 function createBot() {
@@ -46,11 +36,10 @@ function createBot() {
   bot.on('spawn', () => {
     
     // تفعيل إرسال رسالة الديسكورد كل 5 دقائق (300,000 مللي ثانية)
+    // ملاحظة: يجب أن يكون البوت OP (مشرف) ليعمل الأمر /tellraw
     setInterval(() => {
-      // إرسال رسالة JSON القابلة للضغط
-      // نستخدم JSON.stringify لتنسيق رسالة الشات بشكل صحيح
-      bot.chat(JSON.stringify(DISCORD_MESSAGE)); 
-      console.log('Discord link sent.');
+      bot.chat(TELLRAW_COMMAND); // نرسل الأمر كرسالة شات
+      console.log('Discord link command sent.');
     }, 5 * 60 * 1000); // 5 دقائق
 
     console.log('Bot is spawned and AFK interval started.');
@@ -73,6 +62,7 @@ function createBot() {
 
   // تسجيل الشات
   bot.on('chat', (username, message) => {
+    // هذا الجزء هو الذي كان يفشل في معالجة رسالة الديسكورد، لكن الآن سيتعامل معها بشكل مختلف
     console.log(`${username}: ${message}`);
   });
 
