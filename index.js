@@ -7,14 +7,21 @@ const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.21'; 
 
-// رابط الديسكورد ورسالة نصية ملونة
-const DISCORD_LINK = 'https://discord.gg/6m3c2up4p3';
-// تم إعادة رمز اللون الأخضر (§a)
-const SIMPLE_DISCORD_MESSAGE = `§aJoin the SkyData Discord server: ${DISCORD_LINK}`; 
+// قائمة الرسائل العادية (بدون ألوان أو روابط)
+const ANNOUNCEMENT_MESSAGES = [
+    "/say Welcome, enjoy Sky Data!",
+    "/say Don't forget to visit the Discord server (Link in description!).",
+    "/say Warning: Violating the rules will result in a permanent ban.",
+    "/say Sky Data welcomes you. Have a great time!",
+    "/say Server is protected by our AFK bot. Please follow the rules."
+];
 
-// الأمر الذي سيتم تنفيذه: البوت يقول (say) الرسالة
-// *ملاحظة: يجب أن يكون البوت OP (مشرف) ليعمل الأمر /say*
-const SAY_COMMAND = `/say ${SIMPLE_DISCORD_MESSAGE}`; 
+// دالة لاختيار رسالة عشوائية
+function getRandomMessage() {
+    const index = Math.floor(Math.random() * ANNOUNCEMENT_MESSAGES.length);
+    return ANNOUNCEMENT_MESSAGES[index];
+}
+
 
 // دالة إنشاء البوت
 function createBot() {
@@ -27,11 +34,9 @@ function createBot() {
 
   // **الحل الحاسم للاستقرار:** تجاهل معالجات حزم الشات لمنع التعطل الداخلي
   // هذا يحل مشكلة 'unknown chat format code: [object Object]' بشكل نهائي.
-  bot._client.on('system_chat', () => {}); // يمنع البوت من محاولة قراءة رسائل النظام
-  bot._client.on('player_chat', () => {}); // يمنع البوت من محاولة قراءة رسائل اللاعبين
-  
-  // معالج رسائل الشات العادي (كحماية إضافية)
-  bot.on('message', (message) => {}); 
+  bot._client.on('system_chat', () => {}); 
+  bot._client.on('player_chat', () => {}); 
+  bot.on('message', (message) => {}); // كحماية إضافية
 
 
   // عند تسجيل الدخول
@@ -42,12 +47,13 @@ function createBot() {
   // عند دخول البوت للعالم
   bot.on('spawn', () => {
     
-    // تفعيل إرسال رسالة الديسكورد كل 1 دقيقة (60,000 ملي ثانية)
+    // تفعيل إرسال رسالة عشوائية كل 2 دقيقة (120,000 ملي ثانية)
     setInterval(() => {
-      // نستخدم أمر /say مع رسالة ملونة
-      bot.chat(SAY_COMMAND); 
-      console.log('Say command sent.');
-    }, 60 * 1000); // 1 دقيقة
+      const messageToSend = getRandomMessage();
+      // نستخدم أمر /say مع رسالة غير ملونة
+      bot.chat(messageToSend); 
+      console.log(`Announcement sent: ${messageToSend}`);
+    }, 2 * 60 * 1000); // 2 دقيقة
 
     console.log('Bot is spawned and AFK interval started.');
   });
