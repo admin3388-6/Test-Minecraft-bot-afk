@@ -2,7 +2,7 @@
 const mineflayer = require('mineflayer');
 
 // إعدادات البوت
-const BOT_USERNAME = '§cSkyDataBot'; // اسم البوت باللون الأحمر في قائمة اللاعبين (Tab List)
+const BOT_USERNAME = 'SkyDataBot'; // اسم البوت باللون الأحمر في قائمة اللاعبين (Tab List)
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.21'; // تم التعديل إلى الإصدار الرئيسي لزيادة التوافق مع Aternos
