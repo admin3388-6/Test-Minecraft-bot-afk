@@ -2,16 +2,15 @@
 const mineflayer = require('mineflayer');
 
 // إعدادات البوت
-// يمكنك تغيير 'SkyDataBot' إلى اسم مستخدم آخر للحصول على سكن مختلف (إذا كان وضع Cracked مفعلاً)
 const BOT_USERNAME = 'SkyDataBot'; 
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.21'; // نستخدم 1.21 لزيادة التوافق
 
-// رابط الديسكورد ورسالة ملونة
+// رابط الديسكورد ورسالة نصية بسيطة (للتوافق المطلق)
 const DISCORD_LINK = 'https://discord.gg/6m3c2up4p3';
-// رسالة ملونة باللون الأخضر (باستخدام رمز §a)
-const SIMPLE_DISCORD_MESSAGE = `§aJoin the SkyData Discord server: ${DISCORD_LINK}`; 
+// رسالة نصية بسيطة جداً، بدون رموز لون لمنع خطأ 'Illegal characters in chat'
+const SIMPLE_DISCORD_MESSAGE = `Join the SkyData Discord server: ${DISCORD_LINK}`; 
 
 // دالة إنشاء البوت
 function createBot() {
@@ -32,10 +31,10 @@ function createBot() {
     
     // تفعيل إرسال رسالة الديسكورد كل 1 دقيقة (60,000 ملي ثانية)
     setInterval(() => {
-      // نرسل رسالة شات بسيطة وملونة
+      // نرسل رسالة شات بسيطة وغير منسقة
       bot.chat(SIMPLE_DISCORD_MESSAGE); 
-      console.log('Colored Discord link sent.');
-    }, 60 * 1000); // <--- تم التعديل إلى 1 دقيقة (60 ثانية)
+      console.log('Simple Discord link sent.');
+    }, 60 * 1000); // 1 دقيقة
 
     console.log('Bot is spawned and AFK interval started.');
   });
@@ -48,14 +47,14 @@ function createBot() {
     setTimeout(() => bot.setControlState(dir, false), 1000);
   }, 5000);
 
-  // حماية من الموت (تبقى كاحتياط)
+  // حماية من الموت
   bot.on('health', () => {
     if (bot.health < 10) {
       bot.chat('/home');
     }
   });
 
-  // **تم تعطيل معالج الشات المسبب للتعطل لمنع فصل البوت عند محادثة اللاعبين**
+  // **تم تعطيل معالج الشات**
   // bot.on('chat', (username, message) => {
   //   console.log(`${username}: ${message}`);
   // });
