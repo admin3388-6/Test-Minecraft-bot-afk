@@ -9,7 +9,7 @@ const SERVER_VERSION = '1.21';
 
 // رابط الديسكورد ورسالة نصية ملونة
 const DISCORD_LINK = 'https://discord.gg/6m3c2up4p3';
-// تم إعادة رمز اللون الأخضر (§a)
+// الرسالة ملونة باللون الأخضر (§a)
 const SIMPLE_DISCORD_MESSAGE = `§aJoin the SkyData Discord server: ${DISCORD_LINK}`; 
 
 // الأمر الذي سيتم تنفيذه: البوت يقول (say) الرسالة
@@ -23,16 +23,13 @@ function createBot() {
     port: SERVER_PORT,
     username: BOT_USERNAME,
     version: SERVER_VERSION,
-    hideErrors: true 
   });
 
-  // **الحل الحاسم 1:** منع Mineflayer من معالجة حزم الشات الواردة
-  bot._client.on('chat', (packet) => {
-    // نتلقى حزمة الشات لكن لا نفعل شيئاً بها (نتجاهلها)
+  // **الحل الحاسم للاستقرار:** تجاهل كل الرسائل الواردة لمنع تعطل Mineflayer
+  // عند محاولة قراءة تنسيق الشات المعقد من سيرفر Purpur.
+  bot.on('message', (message) => {
+    // لا نفعل شيئاً هنا. هذا يمنع تعطل البوت عند إرسال أو استقبال الشات.
   });
-  
-  // **الحل الحاسم 2:** إزالة مُعالج الشات التلقائي
-  bot._client.removeListener('chat', bot._client.listeners('chat').find(listener => listener.name === 'onChat'));
 
 
   // عند تسجيل الدخول
