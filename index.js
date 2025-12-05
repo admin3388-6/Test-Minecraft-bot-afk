@@ -1,9 +1,11 @@
 const express = require('express');
 const mineflayer = require('mineflayer');
 const chalk = require('chalk');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 let bot = null;
 let movementInterval = null;
@@ -13,7 +15,7 @@ const botConfig = {
   host: "Skydata.aternos.me",
   port: 28068,
   username: "skydata bot",
-  version: false, // auto detect
+  version: false,
   welcomeMessage: "Welcome to skydata world Enjoy"
 };
 
@@ -39,7 +41,7 @@ function startBot() {
     bot.on('end', () => {
       console.log("Bot disconnected, restarting...");
       stopBot();
-      setTimeout(startBot, 5000); // إعادة الاتصال تلقائياً
+      setTimeout(startBot, 5000);
     });
 
     bot.on('error', err => {
@@ -49,7 +51,6 @@ function startBot() {
     });
 
     bot.on('spawn', () => {
-      // AutoEat & Anti-Void
       if (bot.autoEat) bot.autoEat.options = { priority: "food", startAt: 14 };
       bot.on('health', () => {
         if (bot.food < 14 && bot.autoEat) bot.autoEat.eat();
@@ -79,17 +80,14 @@ function startMovement() {
     const actions = ["forward", "back", "left", "right"];
     actions.forEach(a => bot.setControlState(a, false));
 
-    // حركة عشوائية ذكية
     const action = actions[Math.floor(Math.random() * actions.length)];
     bot.setControlState(action, true);
 
-    // قفز عشوائي
     if (Math.random() < 0.4) {
       bot.setControlState('jump', true);
       setTimeout(() => bot.setControlState('jump', false), 500);
     }
 
-    // إرسال رسالة شات عشوائية أحياناً
     if (Math.random() < 0.2) {
       bot.chat(chalk.blue(botConfig.welcomeMessage));
     }
@@ -99,7 +97,7 @@ function startMovement() {
 }
 
 // ======== EXPRESS ROUTES ========
-app.get('/health', (req, res) => res.send("ok")); // UptimeRobot ping
+app.get('/health', (req, res) => res.send("ok"));
 
 app.post('/start', async (req, res) => {
   try {
@@ -117,4 +115,4 @@ app.post('/stop', (req, res) => {
 
 // ======== START EXPRESS SERVER ========
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on port", PORT));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
