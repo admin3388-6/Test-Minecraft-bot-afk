@@ -1,5 +1,7 @@
-// index.js (النسخة النهائية والمصحّحة)
+// index.js (النسخة النهائية والمستقرة)
 const mineflayer = require('mineflayer');
+// جلب دالة Vec3 وهي مطلوبة لبعض عمليات mineflayer الداخلية
+const { Vec3 } = require('vec3'); 
 const pathfinder = require('mineflayer-pathfinder').pathfinder;
 const { GoalNear } = require('mineflayer-pathfinder').goals;
 const Movements = require('mineflayer-pathfinder').Movements;
@@ -13,8 +15,11 @@ const SERVER_VERSION = '1.19.4'; 
 
 // قائمة بأنواع البلوكات التي يمكن للبوت جمعها
 const collectableMaterials = {
+    // يكسر الخشب
     wood: block => block && (block.name.includes('log') || block.name.includes('wood')),
+    // يكسر الحجر والمعادن
     stone: block => block && (block.name.includes('stone') || block.name.includes('ore') || block.name.includes('cobblestone')),
+    // يكسر التراب والرمل
     soil: block => block && (block.name.includes('dirt') || block.name.includes('sand') || block.name.includes('gravel'))
 };
 
@@ -31,7 +36,7 @@ function createBot() {
     port: SERVER_PORT,
     username: BOT_USERNAME,
     version: SERVER_VERSION,
-    auth: 'offline', 
+    auth: 'offline', // يحل مشكلة المصادقة
     hideErrors: true 
   });
 
@@ -50,7 +55,7 @@ function createBot() {
     
     // 1. تفعيل إعدادات PathFinder
     defaultMovements = new Movements(bot, bot.registry);
-    defaultMovements.canDig = true; 
+    defaultMovements.canDig = true; // يسمح له بالكسر
     defaultMovements.allowSprinting = false; // Anti-Cheat: لتقليل الاكتشاف
     bot.pathfinder.setMovements(defaultMovements);
 
@@ -60,6 +65,7 @@ function createBot() {
 
   // --- دوال القتال والبحث عن الهدف ---
   function findHostileMob() {
+      // البحث عن أقرب وحش معادٍ لا يزال حياً
       return bot.nearestEntity(entity => {
           const isHostileMob = entity.type === 'mob';
           const isAlive = entity.health > 0;
@@ -75,24 +81,41 @@ function createBot() {
       });
   }
 
+  // **>> الدالة المُعدلة لضمان الكسر وإلغاء الجمود <<**
   function breakAndCollect(block) {
-      if (!block) return;
-      console.log(`Breaking ${block.name}...`);
-      // mineflayer سيختار أفضل أداة في المخزون تلقائياً ويكسر البلوك
-      bot.dig(block, (err) => {
-          if (err) {
-              console.log('Error breaking block:', err.message);
-              return; 
-          }
-          console.log(`Successfully collected ${block.name}.`);
+      // إذا كان البلوك غير موجود (مثلاً: تم كسره من لاعب آخر)، قم بمسح الهدف
+      if (!block) {
+          bot.pathfinder.setGoal(null);
+          return;
+      }
+      
+      // 1. يجب على البوت النظر إلى البلوك قبل الكسر
+      bot.lookAt(block.position.offset(0.5, 0.5, 0.5), true, () => {
+          console.log(`Breaking ${block.name}...`);
+          
+          // 2. الكسر الفعلي
+          // mineflayer سيختار أفضل أداة في المخزون تلقائياً
+          bot.dig(block, (err) => {
+              if (err) {
+                  // إذا حدث خطأ (عدم وجود أداة، خطأ في الحماية)، قم بمسح الهدف
+                  console.log(`Error breaking block: ${err.message}. Clearing goal to unfreeze.`);
+                  bot.pathfinder.setGoal(null); // الحل لعدم الجمود
+                  return; 
+              }
+              console.log(`Successfully collected ${block.name}.`);
+              // بعد الكسر الناجح، قم بمسح الهدف للبحث عن هدف جديد فوراً
+              bot.pathfinder.setGoal(null);
+          });
       });
   }
 
   // --- حلقة الذكاء الاصطناعي الرئيسية (تحديد الأولويات) ---
   function startAILoop() {
+      // تأكد من أن البوت لا يزال موجوداً في اللعبة
       if (bot.entity === null) return; 
 
       setInterval(() => {
+          // 1. الأولوية القصوى: القتال
           const target = findHostileMob();
           if (target) {
               if (!bot.pvp.target) {
@@ -105,19 +128,22 @@ function createBot() {
               bot.pvp.stop();
           }
 
-          // **التصحيح الرئيسي: استخدام bot.pathfinder.goal للتحقق من وجود هدف**
+          // 2. الأولوية الثانية: التجميع (إذا لم يكن هناك هدف حالي)
           if (!bot.pathfinder.goal) { 
               const tree = findClosestBlock('wood');
               if (tree) {
                   console.log('GATHER PRIORITY: Moving to chop wood.');
+                  // الهدف هو الوصول إلى مسافة 2 بلوك من الشجرة
                   const goal = new GoalNear(tree.position.x, tree.position.y, tree.position.z, 2);
                   bot.pathfinder.setGoal(goal, true);
                   
+                  // عند الوصول، يبدأ بالتكسير
                   bot.once('goal_reached', () => {
                       breakAndCollect(tree);
                   });
               } else {
-                  console.log('No goals, starting slow random walk.');
+                  console.log('No goals, wandering slowly.');
+                  // يمكن هنا إضافة منطق تنقل عشوائي بسيط (مثل bot.setControlState('forward', true))
               }
           }
       }, 3000); 
