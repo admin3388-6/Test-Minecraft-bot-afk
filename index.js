@@ -1,119 +1,116 @@
-// index.js
 const mineflayer = require('mineflayer');
+const pathfinder = require('mineflayer-pathfinder').pathfinder;
+const { GoalNear } = require('mineflayer-pathfinder').goals;
+const Movements = require('mineflayer-pathfinder').Movements;
+const pvp = require('mineflayer-pvp').plugin; // لإضافة منطق القتال
 
-// === إعدادات البوت ===
-const BOT_USERNAME = 'demons'; 
-const SERVER_HOST = 'skydata.aternos.me';
-const SERVER_PORT = 28068;
-// الإبقاء على الإصدار القديم كما طلب المستخدم
-const SERVER_VERSION = '1.19.4'; 
+// --- قم بملء تفاصيل الاتصال الخاصة بك هنا ---
+const bot = mineflayer.createBot({
+    host: 'localhost', // أو عنوان IP الخاص بخادمك (مثلاً: aternos-server.net)
+    port: 25565,       // أو المنفذ الخاص بخادمك
+    username: 'JasonDuck9736',
+    auth: 'microsoft'  // 'mojang' أو 'microsoft'
+});
+// ---------------------------------------------
 
-// قائمة بأوامر الحركة التي يمكن للبوت تنفيذها
-const movementControls = ['forward', 'back', 'left', 'right', 'jump'];
+let defaultMovements;
 
-function createBot() {
-  const bot = mineflayer.createBot({
-    host: SERVER_HOST,
-    port: SERVER_PORT,
-    username: BOT_USERNAME,
-    version: SERVER_VERSION,
-    hideErrors: true 
-  });
+// تفعيل الإضافات
+bot.loadPlugin(pathfinder);
+bot.loadPlugin(pvp);
 
-  bot.on('login', () => {
-    console.log(`Bot logged in as ${bot.username}`);
-  });
-
-  bot.on('spawn', () => {
-    console.log('Bot spawned. Advanced AFK and Mob Defense routine started.');
-    // بدء روتين الحركة العشوائية
-    randomAFKLoop();
-    // بدء روتين البحث عن الوحوش والهجوم عليها (يفحص كل ثانية)
-    setInterval(() => lookForMobsAndAttack(bot), 1000); 
-  });
-
-  // دالة الحركة العشوائية (الأكثر تطوراً)
-  function randomAFKLoop() {
-    // 1. إيقاف كل الحركات الحالية
-    for (const control of movementControls) {
-      bot.setControlState(control, false);
-    }
-
-    // 2. تحديد مدة الحركة العشوائية (بين 5 إلى 20 ثانية)
-    // المدة بالمللي ثانية
-    const movementDuration = Math.random() * (20000 - 5000) + 5000;
+bot.once('spawn', () => {
+    console.log('Bot Spawned. Initializing AI...');
+    defaultMovements = new Movements(bot, bot.registry);
     
-    // 3. تحديد الحركات الجديدة بشكل عشوائي (يختار حركة أو اثنتين)
-    const randomControls = [];
-    const numControls = Math.floor(Math.random() * 2) + 1; 
-    for (let i = 0; i < numControls; i++) {
-        const randomIndex = Math.floor(Math.random() * movementControls.length);
-        const control = movementControls[randomIndex];
-        if (!randomControls.includes(control)) {
-            randomControls.push(control);
-        }
-    }
-
-    // 4. تفعيل الحركات المختارة
-    for (const control of randomControls) {
-        bot.setControlState(control, true);
-    }
+    // إعدادات الحركة: السماح للبوت بكسر البلوكات
+    defaultMovements.canDig = true; 
     
-    // 5. حركة الرأس والجسم (360 درجة عشوائية)
-    const yaw = Math.random() * Math.PI * 2; // دوران 360 درجة للجسم
-    const pitch = (Math.random() * Math.PI / 2) - (Math.PI / 4); // حركة رأس عشوائية (-45 إلى +45 درجة)
-    bot.look(yaw, pitch, true); 
+    // إعدادات البوت لاستخدام أفضل أداة لكسر البلوكات
+    bot.pathfinder.setMovements(defaultMovements);
 
-    console.log(`Moving: ${randomControls.join(', ')} for ${Math.round(movementDuration / 1000)}s`);
+    // ابدأ البحث عن الأهداف بعد 5 ثوانٍ
+    setTimeout(startAILoop, 5000); 
+});
 
-    // 6. توقف الحركة وبدء الدورة التالية
-    setTimeout(() => {
-        // إيقاف جميع الحركات بعد انتهاء المدة
-        for (const control of movementControls) {
-          bot.setControlState(control, false);
-        }
-        // استدعاء الدالة مجدداً لبدء حركة جديدة عشوائية
-        randomAFKLoop(); 
-    }, movementDuration);
-  }
+// --- دوال القتال والبحث عن الهدف ---
 
-  // دالة البحث عن الوحوش والهجوم (Mob Defense)
-  function lookForMobsAndAttack(bot) {
-    // أنواع الكيانات المعادية الشائعة
-    const hostileMobs = ['zombie', 'skeleton', 'spider', 'creeper'];
-    
-    const filter = entity => (
-      entity.type === 'mob' && 
-      hostileMobs.includes(entity.name) && 
-      bot.entity.position.distanceTo(entity.position) < 10 // نطاق رؤية 10 بلوكات
-    );
+// دالة تصفية الأهداف (يهاجم الوحوش فقط، يتجاهل اللاعبين)
+function findHostileMob() {
+    return bot.nearestEntity(entity => {
+        // نتحقق من النوع: نريد فقط الوحوش (Mobs)، وليس اللاعبين (player)
+        const isHostileMob = entity.type === 'mob' && entity.name !== 'player';
+        
+        // يجب أن يكون الكيان على قيد الحياة
+        const isAlive = entity.health > 0;
 
-    const target = bot.nearestEntity(filter);
-
-    if (target) {
-      // إيقاف الحركة المؤقتة للتركيز على الهدف والهجوم عليه
-      for (const control of movementControls) {
-        bot.setControlState(control, false);
-      }
-      
-      console.log(`Attacking nearest hostile mob: ${target.name}`);
-      
-      bot.lookAt(target.position.offset(0, target.height, 0), true, () => {
-        bot.attack(target);
-      });
-    }
-  }
-
-  // تسجيل الأخطاء
-  bot.on('error', err => console.log(`Error: ${err}`));
-
-  // عند قطع الاتصال، إعادة إنشاء البوت تلقائيًا
-  bot.on('end', () => {
-    console.log('Bot disconnected, reconnecting in 5s...');
-    // إعادة الاتصال السريعة كضمان أخير
-    setTimeout(createBot, 5000); 
-  });
+        return isHostileMob && isAlive;
+    });
 }
 
-// تشغيل البوت لأول مرة
-createBot();
+// دالة البحث عن أقرب شجرة
+function findClosestTree() {
+    return bot.findBlock({
+        matching: block => block.name.includes('log'), // البحث عن أي نوع من الخشب
+        maxDistance: 64 // البحث ضمن نطاق 64 بلوكة
+    });
+}
+
+// --- حلقة الذكاء الاصطناعي الرئيسية (تحديد الأولويات) ---
+function startAILoop() {
+    setInterval(() => {
+        // الأولوية 1: القتال (إذا كان هناك وحش قريب)
+        const target = findHostileMob();
+        if (target) {
+            console.log(`ATTACK PRIORITY: Attacking ${target.name}`);
+            // يقوم pvp بالانتقال إلى الهدف وتجهيز السيف والهجوم
+            bot.pvp.attack(target); 
+            return; // توقف عن تنفيذ باقي المهام
+        }
+
+        // الأولوية 2: جمع الخشب (إذا لم يكن هناك قتال)
+        if (!bot.pathfinder.is</pathfinder.is>GoalSet()) {
+            const tree = findClosestTree();
+            if (tree) {
+                console.log('GATHER PRIORITY: Moving to chop wood.');
+                // ضع هدف التنقل
+                const goal = new GoalNear(tree.position.x, tree.position.y, tree.position.z, 1);
+                bot.pathfinder.setGoal(goal, true);
+                
+                // بمجرد الوصول، يبدأ بالكسر
+                bot.once('goal_reached', () => {
+                    chopBlock(tree);
+                });
+            } else {
+                // إذا لم يجد هدفًا، يمشي بشكل عشوائي وببطء لتجنب الكشف
+                console.log('No goals, walking slowly.');
+                // هنا يمكن إضافة منطق التنقل البشري البطيء بدلاً من العشوائي
+            }
+        }
+    }, 5000); // يفحص الأهداف كل 5 ثوان
+}
+
+// دالة الكسر الذكية (تستخدم الأداة الصحيحة)
+function chopBlock(block) {
+    if (block.name.includes('log') || block.name.includes('wood')) {
+        // يقوم mineflayer تلقائياً بالبحث عن أفضل فأس في المخزون وتجهيزه
+        bot.dig(block, (err) => {
+            if (err) {
+                console.log('Error chopping block:', err);
+                return;
+            }
+            console.log(`Successfully chopped ${block.name}.`);
+            // بعد الكسر، يبحث عن شجرة أخرى أو يعود للروتين
+            startAILoop(); 
+        });
+    }
+}
+
+// --- معالجة الأخطاء والرسائل ---
+bot.on('kicked', (reason) => console.log(`Kicked for reason: ${reason}`));
+bot.on('error', (err) => console.log(`Bot Error: ${err.message}`));
+bot.on('chat', (username, message) => {
+    if (message === 'حالة') {
+        bot.chat(`I am currently ${bot.pathfinder.isGoalSet() ? 'moving' : 'idle'}.`);
+    }
+});
