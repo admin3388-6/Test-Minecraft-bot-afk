@@ -18,6 +18,14 @@ const collectableMaterials = {
     soil: block => block && (block.name.includes('dirt') || block.name.includes('sand') || block.name.includes('gravel'))
 };
 
+// دالة لمعالجة إعادة الاتصال
+const RECONNECT_DELAY = 5000; // 5 ثواني
+function reconnect() {
+    console.log(`Connection lost. Attempting reconnect in ${RECONNECT_DELAY / 1000} seconds...`);
+    // التأكد من عدم وجود اتصال حالي قبل محاولة إنشاء بوت جديد
+    setTimeout(createBot, RECONNECT_DELAY);
+}
+
 function createBot() {
   const bot = mineflayer.createBot({
     host: SERVER_HOST,
@@ -50,11 +58,9 @@ function createBot() {
     startAILoop(); 
   });
 
-  // --- دوال القتال والبحث عن الهدف ---
-
-  // دالة تصفية الأهداف (يهاجم الوحوش فقط)
+  // --- دوال القتال والبحث عن الهدف (كما في الكود السابق) ---
   function findHostileMob() {
-      // البحث عن أقرب كيان من نوع 'mob' وليس 'player'
+      // ... (الكود لم يتغير)
       return bot.nearestEntity(entity => {
           const isHostileMob = entity.type === 'mob';
           const isAlive = entity.health > 0;
@@ -62,8 +68,8 @@ function createBot() {
       });
   }
 
-  // دالة البحث عن المادة
   function findClosestBlock(materialType) {
+      // ... (الكود لم يتغير)
       return bot.findBlock({
           matching: collectableMaterials[materialType],
           maxDistance: 64,
@@ -71,13 +77,9 @@ function createBot() {
       });
   }
 
-  // دالة كسر البلوك (تستخدم الأداة الصحيحة تلقائياً)
   function breakAndCollect(block) {
       if (!block) return;
-
       console.log(`Breaking ${block.name}...`);
-      
-      // mineflayer سيختار أفضل أداة في المخزون تلقائياً ويكسر البلوك
       bot.dig(block, (err) => {
           if (err) {
               console.log('Error breaking block:', err.message);
@@ -87,51 +89,54 @@ function createBot() {
       });
   }
 
-  // --- حلقة الذكاء الاصطناعي الرئيسية (تحديد الأولويات) ---
   function startAILoop() {
       setInterval(() => {
-          // 1. الأولوية القصوى: القتال والدفاع
           const target = findHostileMob();
           if (target) {
               if (!bot.pvp.target) {
                 console.log(`ATTACK PRIORITY: Attacking ${target.name}`);
-                bot.pvp.attack(target); // يبدأ القتال
+                bot.pvp.attack(target); 
               }
               return; 
           }
-
-          // 2. إلغاء أي هدف قتال سابق إذا لم يعد هناك وحوش
           if (bot.pvp.target) {
               bot.pvp.stop();
           }
 
-          // 3. جمع الموارد (البحث عن الخشب أولاً)
           if (!bot.pathfinder.isGoalSet()) {
               const tree = findClosestBlock('wood');
               if (tree) {
                   console.log('GATHER PRIORITY: Moving to chop wood.');
-                  // الهدف هو الوصول إلى نقطة قريبة من البلوك
                   const goal = new GoalNear(tree.position.x, tree.position.y, tree.position.z, 2);
                   bot.pathfinder.setGoal(goal, true);
                   
-                  // عند الوصول، ابدأ بكسر البلوك
                   bot.once('goal_reached', () => {
                       breakAndCollect(tree);
                   });
               } else {
-                  // 4. لا يوجد هدف: تنقل عشوائي لتجنب الكشف
                   console.log('No goals, starting slow random walk.');
-                  // يمكن إضافة منطق تنقل بطيء هنا
-                  
               }
           }
-      }, 3000); // يفحص الأهداف كل 3 ثوان
+      }, 3000); 
   }
 
-  // --- معالجة الأخطاء والرسائل ---
-  bot.on('kicked', (reason) => console.log(`Kicked for reason: ${reason}`));
+  // --- معالجة الأخطاء والاتصال (Auto-Reconnect) ---
+  
+  // 1. عند الطرد من الخادم
+  bot.on('kicked', (reason) => {
+      console.log(`Kicked! Reason: ${reason}`);
+      reconnect(); // أعد محاولة الاتصال
+  });
+
+  // 2. عند فقدان الاتصال (يغطي ECONNRESET)
+  bot.on('end', (reason) => {
+      console.log(`Bot disconnected. Reason: ${reason}`);
+      reconnect(); // أعد محاولة الاتصال
+  });
+
+  // 3. الأخطاء العامة
   bot.on('error', (err) => {
-      // طباعة رسائل الخطأ غير المتعلقة بالاتصال
+      // إذا كان الخطأ هو رفض الاتصال، فسيتم معالجته بواسطة 'end'
       if (err.code !== 'ECONNREFUSED' && err.code !== 'ENOTFOUND') {
          console.log(`Bot Error: ${err.message}`);
       }
