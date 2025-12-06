@@ -1,15 +1,23 @@
 {
-  "name": "skydata-bot",
+  "name": "mineflayer-smart-bot",
   "version": "1.0.0",
-  "description": "Minecraft bot for SkyData server",
+  "description": "A smart Minecraft bot for gathering and combat.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [
+    "mineflayer",
+    "minecraft",
+    "bot",
+    "ai"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "mineflayer": "^4.0.0"
-  },
-  "engines": {
-    "node": ">=18"
+    "mineflayer": "^4.10.0", 
+    "mineflayer-pathfinder": "^2.1.1", 
+    "mineflayer-pvp": "^1.2.0" 
   }
 }
