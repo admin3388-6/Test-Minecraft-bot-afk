@@ -69,7 +69,8 @@ function startAILoop() {
         }
 
         // الأولوية 2: جمع الخشب (إذا لم يكن هناك قتال)
-        if (!bot.pathfinder.is</pathfinder.is>GoalSet()) {
+        // ✅ السطر الصحيح
+if (!bot.pathfinder.isGoalSet()) {
             const tree = findClosestTree();
             if (tree) {
                 console.log('GATHER PRIORITY: Moving to chop wood.');
