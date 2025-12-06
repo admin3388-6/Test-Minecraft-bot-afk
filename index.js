@@ -1,4 +1,4 @@
-// index.js (النسخة النهائية والمحسّنة)
+// index.js (النسخة النهائية والمصحّحة)
 const mineflayer = require('mineflayer');
 const pathfinder = require('mineflayer-pathfinder').pathfinder;
 const { GoalNear } = require('mineflayer-pathfinder').goals;
@@ -31,7 +31,7 @@ function createBot() {
     port: SERVER_PORT,
     username: BOT_USERNAME,
     version: SERVER_VERSION,
-    auth: 'offline', // يحل مشكلة المصادقة
+    auth: 'offline', 
     hideErrors: true 
   });
 
@@ -51,15 +51,11 @@ function createBot() {
     // 1. تفعيل إعدادات PathFinder
     defaultMovements = new Movements(bot, bot.registry);
     defaultMovements.canDig = true; 
-    
-    // **>> تعديل Anti-Cheat (إيقاف الجري)**
-    defaultMovements.allowSprinting = false; 
-    
+    defaultMovements.allowSprinting = false; // Anti-Cheat: لتقليل الاكتشاف
     bot.pathfinder.setMovements(defaultMovements);
 
     // 2. بدء حلقة الذكاء الاصطناعي الرئيسية
-    // **>> تعديل Anti-Cheat (تأخير البدء)**
-    setTimeout(startAILoop, 10000); // تأخير 10 ثواني قبل بدء الحركة
+    setTimeout(startAILoop, 10000); // Anti-Cheat: تأخير 10 ثواني
   });
 
   // --- دوال القتال والبحث عن الهدف ---
@@ -82,6 +78,7 @@ function createBot() {
   function breakAndCollect(block) {
       if (!block) return;
       console.log(`Breaking ${block.name}...`);
+      // mineflayer سيختار أفضل أداة في المخزون تلقائياً ويكسر البلوك
       bot.dig(block, (err) => {
           if (err) {
               console.log('Error breaking block:', err.message);
@@ -93,7 +90,6 @@ function createBot() {
 
   // --- حلقة الذكاء الاصطناعي الرئيسية (تحديد الأولويات) ---
   function startAILoop() {
-      // نتحقق مما إذا كان البوت لا يزال متصلاً قبل تشغيل الحلقة
       if (bot.entity === null) return; 
 
       setInterval(() => {
@@ -109,7 +105,8 @@ function createBot() {
               bot.pvp.stop();
           }
 
-          if (!bot.pathfinder.isGoalSet()) {
+          // **التصحيح الرئيسي: استخدام bot.pathfinder.goal للتحقق من وجود هدف**
+          if (!bot.pathfinder.goal) { 
               const tree = findClosestBlock('wood');
               if (tree) {
                   console.log('GATHER PRIORITY: Moving to chop wood.');
@@ -121,7 +118,6 @@ function createBot() {
                   });
               } else {
                   console.log('No goals, starting slow random walk.');
-                  // يمكن إضافة منطق تنقل بطيء أو شبه عشوائي هنا بدلاً من الانتظار
               }
           }
       }, 3000); 
@@ -130,7 +126,6 @@ function createBot() {
   // --- معالجة أخطاء إعادة الاتصال (Auto-Reconnect) ---
   
   bot.on('kicked', (reason) => {
-      // **يجب عليك مراقبة هذا السطر لتحديد رسالة Anti-Cheat**
       console.log(`Kicked! Reason: ${reason}`); 
       reconnect();
   });
