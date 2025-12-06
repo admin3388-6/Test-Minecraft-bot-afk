@@ -2,7 +2,7 @@
 const mineflayer = require('mineflayer');
 
 // === إعدادات البوت ===
-const BOT_USERNAME = 'SkyDataBot'; 
+const BOT_USERNAME = 'demons'; 
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 // الحل النهائي لخطأ الفصل: استخدام بروتوكول قديم مستقر
