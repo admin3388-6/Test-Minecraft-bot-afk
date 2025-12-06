@@ -13,12 +13,9 @@ const SERVER_VERSION = '1.19.4'; 
 
 // قائمة بأنواع البلوكات التي يمكن للبوت جمعها
 const collectableMaterials = {
-    // الخشب (Wood): يستخدم الفأس تلقائياً
-    wood: block => block.name.includes('log') || block.name.includes('wood'), 
-    // الحجر (Stone): يستخدم البيكاكس تلقائياً
-    stone: block => block.name.includes('stone') || block.name.includes('ore'), 
-    // الرمل/التراب (Sand/Dirt): يستخدم الشوفل تلقائياً
-    soil: block => block.name.includes('dirt') || block.name.includes('sand')
+    wood: block => block && (block.name.includes('log') || block.name.includes('wood')),
+    stone: block => block && (block.name.includes('stone') || block.name.includes('ore') || block.name.includes('cobblestone')),
+    soil: block => block && (block.name.includes('dirt') || block.name.includes('sand') || block.name.includes('gravel'))
 };
 
 function createBot() {
@@ -27,7 +24,7 @@ function createBot() {
     port: SERVER_PORT,
     username: BOT_USERNAME,
     version: SERVER_VERSION,
-    auth: 'microsoft', // ضروري لتسجيل الدخول الحديث
+    auth: 'offline', // الحل النهائي لتجاوز مشكلة Microsoft/Mojang
     hideErrors: true 
   });
 
@@ -38,7 +35,7 @@ function createBot() {
   bot.loadPlugin(pvp);
 
   bot.on('login', () => {
-    console.log(`Bot logged in as ${bot.username}`);
+    console.log(`Bot logged in as ${bot.username} (Offline Mode)`);
   });
 
   bot.on('spawn', () => {
@@ -46,7 +43,7 @@ function createBot() {
     
     // 1. تفعيل إعدادات PathFinder
     defaultMovements = new Movements(bot, bot.registry);
-    defaultMovements.canDig = true; // السماح للبوت بالكسر
+    defaultMovements.canDig = true; // السماح للبوت بالكسر (مع استخدام الأداة الصحيحة تلقائياً)
     bot.pathfinder.setMovements(defaultMovements);
 
     // 2. بدء حلقة الذكاء الاصطناعي الرئيسية
@@ -65,12 +62,12 @@ function createBot() {
       });
   }
 
-  // دالة البحث عن المادة (مثلاً: الخشب)
+  // دالة البحث عن المادة
   function findClosestBlock(materialType) {
       return bot.findBlock({
           matching: collectableMaterials[materialType],
           maxDistance: 64,
-          allowUnsafe: true // يسمح بالبحث عن بلوكات غير قابلة للكسر فوراً
+          allowUnsafe: true 
       });
   }
 
@@ -78,13 +75,12 @@ function createBot() {
   function breakAndCollect(block) {
       if (!block) return;
 
-      console.log(`Breaking ${block.name} at ${block.position.x}, ${block.position.y}, ${block.position.z}`);
+      console.log(`Breaking ${block.name}...`);
       
       // mineflayer سيختار أفضل أداة في المخزون تلقائياً ويكسر البلوك
       bot.dig(block, (err) => {
           if (err) {
               console.log('Error breaking block:', err.message);
-              // إذا كان هناك خطأ، يعود للبحث عن هدف جديد
               return; 
           }
           console.log(`Successfully collected ${block.name}.`);
@@ -109,21 +105,23 @@ function createBot() {
               bot.pvp.stop();
           }
 
-          // 3. جمع الموارد (إذا لم يكن هناك هدف تنقل حالي)
+          // 3. جمع الموارد (البحث عن الخشب أولاً)
           if (!bot.pathfinder.isGoalSet()) {
               const tree = findClosestBlock('wood');
               if (tree) {
                   console.log('GATHER PRIORITY: Moving to chop wood.');
-                  const goal = new GoalNear(tree.position.x, tree.position.y, tree.position.z, 1);
+                  // الهدف هو الوصول إلى نقطة قريبة من البلوك
+                  const goal = new GoalNear(tree.position.x, tree.position.y, tree.position.z, 2);
                   bot.pathfinder.setGoal(goal, true);
                   
+                  // عند الوصول، ابدأ بكسر البلوك
                   bot.once('goal_reached', () => {
                       breakAndCollect(tree);
                   });
               } else {
-                  // 4. لا يوجد هدف: تنقل عشوائي لتجنب الحظر
-                  console.log('No specific goal, wandering.');
-                  // (يمكن إضافة منطق تنقل عشوائي بسيط هنا)
+                  // 4. لا يوجد هدف: تنقل عشوائي لتجنب الكشف
+                  console.log('No goals, starting slow random walk.');
+                  // يمكن إضافة منطق تنقل بطيء هنا
                   
               }
           }
@@ -132,11 +130,11 @@ function createBot() {
 
   // --- معالجة الأخطاء والرسائل ---
   bot.on('kicked', (reason) => console.log(`Kicked for reason: ${reason}`));
-  bot.on('error', (err) => console.log(`Bot Error: ${err.message}`));
-  bot.on('chat', (username, message) => {
-    if (message === 'حالة') {
-        bot.chat(`I am currently ${bot.pathfinder.isGoalSet() ? 'moving' : 'idle'}.`);
-    }
+  bot.on('error', (err) => {
+      // طباعة رسائل الخطأ غير المتعلقة بالاتصال
+      if (err.code !== 'ECONNREFUSED' && err.code !== 'ENOTFOUND') {
+         console.log(`Bot Error: ${err.message}`);
+      }
   });
 
   return bot;
