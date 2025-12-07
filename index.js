@@ -1,6 +1,5 @@
 // index.js (النسخة النهائية والمستقرة)
 const mineflayer = require('mineflayer');
-// جلب دالة Vec3
 const { Vec3 } = require('vec3'); 
 const pathfinder = require('mineflayer-pathfinder').pathfinder;
 const { GoalNear } = require('mineflayer-pathfinder').goals;
@@ -13,8 +12,9 @@ const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.19.4'; 
 
-// **>> تم زيادة المهلة لتجنب "Connection throttled" <<**
-const RECONNECT_DELAY = 15000; // 15 ثانية
+// **>> تم زيادة المهلة بشكل كبير لتجنب "Connection throttled" <<**
+const RECONNECT_DELAY = 30000; // 30 ثانية
+let reconnectAttempts = 0; // عداد محاولات إعادة الاتصال الفاشلة
 
 // قائمة بأنواع البلوكات التي يمكن للبوت جمعها
 const collectableMaterials = {
@@ -25,8 +25,17 @@ const collectableMaterials = {
 
 
 function reconnect() {
-    console.log(`Connection lost. Attempting reconnect in ${RECONNECT_DELAY / 1000} seconds...`);
-    setTimeout(createBot, RECONNECT_DELAY);
+    reconnectAttempts++;
+    let currentDelay = RECONNECT_DELAY;
+
+    // إذا فشلت 3 محاولات متتالية، انتظر دقيقة كاملة
+    if (reconnectAttempts >= 3) {
+        currentDelay = 60000; // 60 ثانية
+        console.log(`Multiple failures detected. Waiting 60 seconds to reset server throttle.`);
+    }
+
+    console.log(`Connection lost. Attempting reconnect in ${currentDelay / 1000} seconds...`);
+    setTimeout(createBot, currentDelay);
 }
 
 function createBot() {
@@ -47,6 +56,7 @@ function createBot() {
 
   bot.on('login', () => {
     console.log(`Bot logged in as ${bot.username}`);
+    reconnectAttempts = 0; // إعادة تعيين العداد عند نجاح الدخول
   });
 
   bot.on('spawn', () => {
@@ -57,8 +67,6 @@ function createBot() {
     defaultMovements.allowSprinting = false; 
     bot.pathfinder.setMovements(defaultMovements);
     
-    // **>> تم إزالة الكود المسبب لـ TypeError: bot.pathfinder.on <<**
-
     setTimeout(startAILoop, 10000); 
   });
 
@@ -88,7 +96,7 @@ function createBot() {
           bot.dig(block, (err) => {
               if (err) {
                   console.log(`Error breaking block: ${err.message}. Clearing goal to unfreeze.`);
-                  bot.pathfinder.setGoal(null); // الحل لعدم الجمود
+                  bot.pathfinder.setGoal(null); 
                   return; 
               }
               console.log(`Successfully collected ${block.name}.`);
@@ -121,14 +129,12 @@ function createBot() {
                   const goal = new GoalNear(tree.position.x, tree.position.y, tree.position.z, 2);
                   bot.pathfinder.setGoal(goal, true);
                   
-                  // **>> تم إعادة bot.once إلى هنا <<**
                   bot.once('goal_reached', () => { 
                       breakAndCollect(tree); 
                   });
                   
               } else {
                   console.log('No goals, starting random movement.');
-                  // **>> إضافة حركة عشوائية لضمان عدم الجمود <<**
                   const randomPoint = bot.entity.position.offset(Math.random() * 10 - 5, 0, Math.random() * 10 - 5);
                   bot.pathfinder.setGoal(new GoalNear(randomPoint.x, randomPoint.y, randomPoint.z, 1));
               }
