@@ -1,5 +1,6 @@
-// index.js (النسخة النهائية والمستقرة مع إصلاح الحركة)
+// index.js (النسخة النهائية والمستقرة)
 const mineflayer = require('mineflayer');
+// جلب دالة Vec3
 const { Vec3 } = require('vec3'); 
 const pathfinder = require('mineflayer-pathfinder').pathfinder;
 const { GoalNear } = require('mineflayer-pathfinder').goals;
@@ -12,7 +13,8 @@ const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.19.4'; 
 
-const RECONNECT_DELAY = 5000;
+// **>> تم زيادة المهلة لتجنب "Connection throttled" <<**
+const RECONNECT_DELAY = 15000; // 15 ثانية
 
 // قائمة بأنواع البلوكات التي يمكن للبوت جمعها
 const collectableMaterials = {
@@ -55,25 +57,12 @@ function createBot() {
     defaultMovements.allowSprinting = false; 
     bot.pathfinder.setMovements(defaultMovements);
     
-    // **>> إضافة مستمع لـ goal_reached هنا <<**
-    bot.pathfinder.on('goal_reached', (goal) => {
-        // إذا كان الهدف الحالي هو الوصول إلى نقطة معينة (GoalNear)
-        if (bot.pathfinder.goal && bot.pathfinder.goal instanceof GoalNear) {
-            // قم بالبحث عن البلوك الذي كان هو الهدف
-            const targetBlock = findBlockNearGoal(bot, bot.pathfinder.goal);
-            if (targetBlock) {
-                 breakAndCollect(targetBlock);
-            } else {
-                 // إذا لم نجد البلوك، قم بمسح الهدف والبحث عن هدف جديد
-                 bot.pathfinder.setGoal(null);
-            }
-        }
-    });
+    // **>> تم إزالة الكود المسبب لـ TypeError: bot.pathfinder.on <<**
 
     setTimeout(startAILoop, 10000); 
   });
 
-  // --- الدوال المساعدة ---
+  // --- دوال القتال والبحث عن الهدف ---
   function findHostileMob() {
       return bot.nearestEntity(entity => entity.type === 'mob' && entity.health > 0);
   }
@@ -83,16 +72,6 @@ function createBot() {
           matching: collectableMaterials[materialType],
           maxDistance: 64,
           allowUnsafe: true 
-      });
-  }
-
-  // دالة جديدة: البحث عن البلوك الفعلي بناءً على الهدف (GoalNear)
-  function findBlockNearGoal(bot, goal) {
-      // نبحث عن البلوك في محيط 2 بلوك من نقطة الهدف
-      return bot.findBlock({
-          matching: (block) => collectableMaterials.wood(block),
-          point: new Vec3(goal.x, goal.y, goal.z),
-          maxDistance: 2
       });
   }
 
@@ -125,7 +104,11 @@ function createBot() {
       setInterval(() => {
           const target = findHostileMob();
           if (target) {
-             // ... (منطق القتال لم يتغير) ...
+              if (!bot.pvp.target) {
+                console.log(`ATTACK PRIORITY: Attacking ${target.name}`);
+                bot.pvp.attack(target); 
+              }
+              return; 
           }
           if (bot.pvp.target) {
               bot.pvp.stop();
@@ -138,13 +121,14 @@ function createBot() {
                   const goal = new GoalNear(tree.position.x, tree.position.y, tree.position.z, 2);
                   bot.pathfinder.setGoal(goal, true);
                   
-                  // **>> إزالة bot.once('goal_reached') هنا - يتم التعامل معها في bot.on('spawn') <<**
-                  // bot.once('goal_reached', () => { breakAndCollect(tree); }); 
+                  // **>> تم إعادة bot.once إلى هنا <<**
+                  bot.once('goal_reached', () => { 
+                      breakAndCollect(tree); 
+                  });
                   
               } else {
                   console.log('No goals, starting random movement.');
                   // **>> إضافة حركة عشوائية لضمان عدم الجمود <<**
-                  // التنقل العشوائي (نقطة أمامية عشوائية)
                   const randomPoint = bot.entity.position.offset(Math.random() * 10 - 5, 0, Math.random() * 10 - 5);
                   bot.pathfinder.setGoal(new GoalNear(randomPoint.x, randomPoint.y, randomPoint.z, 1));
               }
