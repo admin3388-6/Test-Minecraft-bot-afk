@@ -1,23 +1,27 @@
-// index.js (النسخة النهائية مع نظام التبديل والقتال)
+// index.js (النسخة النهائية مع نظام التبديل والقتال العدواني)
 const mineflayer = require('mineflayer');
 
 // === إعدادات البوتات والاتصال ===
-// قائمة البوتات التي ستدخل بالدور
+// قائمة البوتات (يمكنك تغيير هذه الأسماء بأسماء أكثر عشوائية إذا أردت)
 const BOT_USERNAMES = [
-    'demons_1', 
-    'demons_2', 
-    'demons_3', 
-    'demons_4', 
-    'demons_5'
+    'Player_Alpha', 
+    'Agent_Beta', 
+    'Unit_Gama', 
+    'Spectr_Delta', 
+    'Echo_Bot', 
+    'Nexus_One',
+    'Raid_Zero'
 ]; 
 
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.19.4'; 
 const SWITCH_DELAY = 30000; // 30 ثانية انتظار قبل محاولة البوت التالي
+const COMBAT_RANGE = 15; // نطاق الهجوم المطلوب (15 بلوكة)
 
 let currentBotIndex = 0; // مؤشر البوت الحالي
 let currentBot = null; // البوت النشط حالياً
+let afkLoopTimeout = null; // للتحكم في توقف وبدء الحركة العشوائية
 
 // قائمة بأوامر الحركة للحركة العشوائية
 const movementControls = ['forward', 'back', 'left', 'right', 'jump'];
@@ -27,25 +31,34 @@ const movementControls = ['forward', 'back', 'left', 'right', 'jump'];
 // دالة الحركة العشوائية (AFK)
 function randomAFKLoop(bot) {
     if (!bot || !bot.entity) return;
-
-    // 1. إيقاف كل الحركات الحالية
+    
+    // إيقاف كل الحركات السابقة
     for (const control of movementControls) {
         bot.setControlState(control, false);
     }
+    
+    // إذا كان هناك قتال، لا تبدأ الحركة العشوائية
+    const target = bot.nearestEntity(entity => entity.type === 'mob');
+    if (target && bot.entity.position.distanceTo(target.position) <= COMBAT_RANGE) {
+        // تأكد من مسح المؤقت القديم
+        clearTimeout(afkLoopTimeout); 
+        return; 
+    }
 
-    // 2. تحديد حركة عشوائية ومدة زمنية
+
+    // 1. تحديد حركة عشوائية ومدة زمنية
     const randomControl = movementControls[Math.floor(Math.random() * movementControls.length)];
     const movementDuration = Math.random() * 5000 + 1000; // 1 إلى 6 ثواني
 
     console.log(`AFK: Moving ${randomControl} for ${Math.round(movementDuration / 1000)} seconds.`);
     bot.setControlState(randomControl, true);
 
-    // 3. توقف الحركة وبدء الدورة التالية
-    setTimeout(() => {
+    // 2. توقف الحركة وبدء الدورة التالية
+    afkLoopTimeout = setTimeout(() => {
         // إيقاف الحركة
         bot.setControlState(randomControl, false);
         // استدعاء الدالة مجدداً لبدء حركة جديدة عشوائية بعد 1 ثانية
-        setTimeout(() => randomAFKLoop(bot), 1000); 
+        randomAFKLoop(bot); 
     }, movementDuration);
 }
 
@@ -53,33 +66,39 @@ function randomAFKLoop(bot) {
 function lookForMobsAndAttack(bot) {
     if (!bot || !bot.entity) return;
     
-    // أنواع الكيانات المعادية (Hostile Mobs)
-    const hostileMobs = ['zombie', 'skeleton', 'spider', 'creeper', 'enderman', 'witch'];
-    
-    // الفلتر: الكيانات من نوع Mob، اسم معادٍ، وفي نطاق 15 بلوكة
+    // الأنواع: كل أنواع Mob (الوحوش والحيوانات)
     const filter = entity => (
         entity.type === 'mob' && 
-        hostileMobs.includes(entity.name) && 
-        bot.entity.position.distanceTo(entity.position) <= 15 
+        bot.entity.position.distanceTo(entity.position) <= COMBAT_RANGE 
     );
 
     const target = bot.nearestEntity(filter);
 
     if (target) {
-        // إيقاف الحركة العشوائية للتركيز على القتال
+        // 1. إيقاف الحركة العشوائية فوراً
         for (const control of movementControls) {
             bot.setControlState(control, false);
         }
+        clearTimeout(afkLoopTimeout);
         
-        console.log(`COMBAT PRIORITY: Attacking nearest hostile mob: ${target.name} (Range 15).`);
+        console.log(`⚔️ COMBAT PRIORITY: Engaging ${target.name} (Distance: ${bot.entity.position.distanceTo(target.position).toFixed(1)} blocks).`);
         
-        // 1. النظر إلى الهدف
+        // 2. النظر إلى الهدف (ضروري للهجوم)
         bot.lookAt(target.position.offset(0, target.height, 0), true, () => {
-             // 2. الهجوم
-             bot.attack(target);
+             // 3. الهجوم الفوري (mineflayer سيستخدم السيف إذا كان مجهزاً)
+             bot.attack(target, true); // true هنا يعني هجوم بالزر الأيسر (السيف/الأداة)
+             
+             // 4. مطاردة بسيطة
+             if (bot.entity.position.distanceTo(target.position) > 3) {
+                 bot.setControlState('forward', true); // تحرك للأمام لملاحقة الهدف
+             } else {
+                 bot.setControlState('forward', false); // توقف عند الاقتراب جداً
+             }
         });
         
-        // يمكن هنا إضافة منطق للمطاردة إذا كان بعيداً جداً، لكننا نركز الآن على الهجوم في نطاق الرؤية.
+    } else if (!afkLoopTimeout) {
+         // إذا لم يكن هناك هدف قتالي، أعد تشغيل AFK إذا كان متوقفاً
+         randomAFKLoop(bot);
     }
 }
 
@@ -99,7 +118,7 @@ function createBot() {
         hideErrors: true 
     });
 
-    currentBot = bot; // تعيين البوت الحالي
+    currentBot = bot; 
 
     bot.on('login', () => {
         console.log(`✅ Bot logged in as ${bot.username}`);
@@ -111,15 +130,16 @@ function createBot() {
         // 1. بدء روتين الحركة العشوائية
         randomAFKLoop(bot);
         
-        // 2. بدء روتين البحث عن الوحوش والهجوم (يفحص كل ثانية)
-        setInterval(() => lookForMobsAndAttack(bot), 1000); 
+        // 2. بدء روتين البحث عن الوحوش والهجوم (يفحص كل 500ms للهجوم الفوري)
+        setInterval(() => lookForMobsAndAttack(bot), 500); 
     });
     
     // --- معالجة أخطاء إعادة الاتصال والتبديل ---
     
     const switchBot = (reason) => {
-        // إذا كان البوت ما زال موجوداً، قم بمسح الاتصال (قد لا تكون ضرورية لكنها آمنة)
         if (currentBot) {
+            // إيقاف جميع مؤقتات الحركة والقتال قبل التبديل
+            clearTimeout(afkLoopTimeout); 
             currentBot.end(); 
             currentBot = null;
         }
@@ -145,7 +165,6 @@ function createBot() {
 
     bot.on('error', (err) => {
         console.log(`🛑 Bot Error: ${err.message}`);
-        // لا نحتاج لتبديل البوت فوراً في حالة الـ Error، نعتمد على حدث 'end' ليتولى الأمر
     });
 
     return bot;
