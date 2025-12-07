@@ -1,72 +1,105 @@
-// index.js (النسخة النهائية مع نظام التبديل والقتال العدواني)
+// index.js (النسخة النهائية - التحركات البشرية والتبديل والقتال)
 const mineflayer = require('mineflayer');
+const { Vec3 } = require('vec3'); 
 
 // === إعدادات البوتات والاتصال ===
-// قائمة البوتات (يمكنك تغيير هذه الأسماء بأسماء أكثر عشوائية إذا أردت)
+// 1. قائمة البوتات (10 أسماء عشوائية)
 const BOT_USERNAMES = [
-    'Player_Alpha', 
-    'Agent_Beta', 
-    'Unit_Gama', 
-    'Spectr_Delta', 
-    'Echo_Bot', 
-    'Nexus_One',
-    'Raid_Zero'
+    'Player_Alpha', 'Agent_Beta', 'Unit_Gama', 'Spectr_Delta', 'Echo_Bot', 
+    'Nexus_One', 'Raid_Zero', 'Morpheus_X', 'Sky_Walker', 'Ghost_Rider'
 ]; 
 
 const SERVER_HOST = 'skydata.aternos.me';
 const SERVER_PORT = 28068;
 const SERVER_VERSION = '1.19.4'; 
 const SWITCH_DELAY = 30000; // 30 ثانية انتظار قبل محاولة البوت التالي
-const COMBAT_RANGE = 15; // نطاق الهجوم المطلوب (15 بلوكة)
+const COMBAT_RANGE = 15; // نطاق الهجوم
 
-let currentBotIndex = 0; // مؤشر البوت الحالي
-let currentBot = null; // البوت النشط حالياً
-let afkLoopTimeout = null; // للتحكم في توقف وبدء الحركة العشوائية
+let currentBotIndex = 0; 
+let currentBot = null; 
+let afkLoopTimeout = null; 
+let stuckCheckInterval = null; 
+let lastPosition = null; 
 
-// قائمة بأوامر الحركة للحركة العشوائية
-const movementControls = ['forward', 'back', 'left', 'right', 'jump'];
+// قائمة بأوامر الحركة
+const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-// --- دوال الحركة والقتال ---
+// --- دوال التحسينات البشرية والقتال ---
 
-// دالة الحركة العشوائية (AFK)
+// 1. تجهيز أفضل سلاح في المخزون
+async function equipBestWeapon(bot) {
+    const sword = bot.inventory.items().find(item => item.name.includes('sword'));
+    if (sword) {
+        // لا نحتاج للانتظار هنا، فقط نفذ الأمر
+        await bot.equip(sword, 'hand').catch(err => {
+            // هذا الخطأ شائع إذا كان السيف مجهزاً بالفعل
+            // console.log(`Failed to equip sword: ${err.message}`);
+        });
+        return true;
+    }
+    return false;
+}
+
+// 2. الحركة العشوائية (AFK) والتحركات البشرية
 function randomAFKLoop(bot) {
     if (!bot || !bot.entity) return;
     
-    // إيقاف كل الحركات السابقة
+    // إيقاف جميع الحركات السابقة
     for (const control of movementControls) {
         bot.setControlState(control, false);
     }
     
     // إذا كان هناك قتال، لا تبدأ الحركة العشوائية
-    const target = bot.nearestEntity(entity => entity.type === 'mob');
-    if (target && bot.entity.position.distanceTo(target.position) <= COMBAT_RANGE) {
-        // تأكد من مسح المؤقت القديم
+    if (bot.nearestEntity(entity => entity.type === 'mob' && bot.entity.position.distanceTo(entity.position) <= COMBAT_RANGE)) {
         clearTimeout(afkLoopTimeout); 
         return; 
     }
 
-
     // 1. تحديد حركة عشوائية ومدة زمنية
     const randomControl = movementControls[Math.floor(Math.random() * movementControls.length)];
-    const movementDuration = Math.random() * 5000 + 1000; // 1 إلى 6 ثواني
+    let movementDuration = Math.random() * 5000 + 1000; 
 
-    console.log(`AFK: Moving ${randomControl} for ${Math.round(movementDuration / 1000)} seconds.`);
+    console.log(`AFK: Moving ${randomControl} for ${Math.round(movementDuration / 1000)}s. Sprinting/Jumping.`);
+    
+    // تفعيل الجري والقفز مع الحركة لتبدو كلاعب حقيقي
     bot.setControlState(randomControl, true);
+    bot.setControlState('sprint', true);
+    if (Math.random() > 0.5) bot.setControlState('jump', true);
 
-    // 2. توقف الحركة وبدء الدورة التالية
+    // 2. الدوران 360 درجة بشكل دوري (20% فرصة)
+    if (Math.random() < 0.2) {
+        movementDuration = 1000; // تقليل مدة الحركة للتركيز على الدوران
+        bot.look(bot.entity.yaw + Math.PI * 2, bot.entity.pitch, true);
+        console.log("AFK: Performing 360-degree spin.");
+    }
+    
+    // 3. توقف الحركة وبدء الدورة التالية
     afkLoopTimeout = setTimeout(() => {
         // إيقاف الحركة
-        bot.setControlState(randomControl, false);
-        // استدعاء الدالة مجدداً لبدء حركة جديدة عشوائية بعد 1 ثانية
+        for (const control of movementControls) {
+            bot.setControlState(control, false);
+        }
+        // استدعاء الدالة مجدداً
         randomAFKLoop(bot); 
     }, movementDuration);
 }
 
-// دالة البحث عن الوحوش والهجوم (Mob Defense) - النطاق 15 بلوكة
-function lookForMobsAndAttack(bot) {
+// 3. حركة الرأس كلاعب حقيقي
+function randomHeadLook(bot) {
+    if (!bot || !bot.entity) return;
+
+    // النظر عشوائياً في نطاق ضيق لحركة رأس طبيعية
+    const yaw = bot.entity.yaw + (Math.random() * 0.5 - 0.25); // تغيير أفقي بسيط
+    const pitch = bot.entity.pitch + (Math.random() * 0.5 - 0.25); // تغيير عمودي بسيط
+    
+    bot.look(yaw, pitch, true).catch(() => {}); // catch() لتجنب التعطل عند الانفصال
+}
+
+// 4. دالة الهجوم الفوري
+async function lookForMobsAndAttack(bot) {
     if (!bot || !bot.entity) return;
     
-    // الأنواع: كل أنواع Mob (الوحوش والحيوانات)
+    // الهجوم على كل أنواع الكيانات (وحوش أو حيوانات)
     const filter = entity => (
         entity.type === 'mob' && 
         bot.entity.position.distanceTo(entity.position) <= COMBAT_RANGE 
@@ -75,7 +108,10 @@ function lookForMobsAndAttack(bot) {
     const target = bot.nearestEntity(filter);
 
     if (target) {
-        // 1. إيقاف الحركة العشوائية فوراً
+        // 1. تجهيز السلاح (تأكد من وجوده في اليد)
+        await equipBestWeapon(bot);
+
+        // 2. إيقاف الحركة العشوائية فوراً
         for (const control of movementControls) {
             bot.setControlState(control, false);
         }
@@ -83,16 +119,15 @@ function lookForMobsAndAttack(bot) {
         
         console.log(`⚔️ COMBAT PRIORITY: Engaging ${target.name} (Distance: ${bot.entity.position.distanceTo(target.position).toFixed(1)} blocks).`);
         
-        // 2. النظر إلى الهدف (ضروري للهجوم)
+        // 3. النظر والهجوم
         bot.lookAt(target.position.offset(0, target.height, 0), true, () => {
-             // 3. الهجوم الفوري (mineflayer سيستخدم السيف إذا كان مجهزاً)
-             bot.attack(target, true); // true هنا يعني هجوم بالزر الأيسر (السيف/الأداة)
+             bot.attack(target, true); // هجوم فوري
              
              // 4. مطاردة بسيطة
              if (bot.entity.position.distanceTo(target.position) > 3) {
-                 bot.setControlState('forward', true); // تحرك للأمام لملاحقة الهدف
+                 bot.setControlState('forward', true);
              } else {
-                 bot.setControlState('forward', false); // توقف عند الاقتراب جداً
+                 bot.setControlState('forward', false);
              }
         });
         
@@ -102,6 +137,26 @@ function lookForMobsAndAttack(bot) {
     }
 }
 
+// 5. دالة التحقق من التعليق والعودة إلى نقطة البداية
+function stuckDetection(bot) {
+    if (!bot || !bot.entity || !lastPosition) return;
+
+    // إذا كان يتحرك (أحد أزرار التحكم مضغوط)
+    const isMoving = movementControls.some(control => bot.getControlState(control));
+
+    // إذا لم يتغير الموضع لأكثر من 5 ثوانٍ وكان يحاول التحرك (مسافة أقل من 0.1 بلوك)
+    if (isMoving && bot.entity.position.distanceTo(lastPosition) < 0.1) {
+        console.log("⚠️ STUCK DETECTED! Teleporting to spawn.");
+        // إيقاف الحركة قبل تنفيذ الأمر
+        for (const control of movementControls) {
+            bot.setControlState(control, false);
+        }
+        // تنفيذ أمر العودة إلى نقطة البداية (يتطلب صلاحيات OP)
+        bot.chat('/spawn'); 
+    }
+    // تحديث آخر موضع
+    lastPosition = bot.entity.position.clone();
+}
 
 // --- دوال الاتصال والتبديل ---
 
@@ -125,32 +180,40 @@ function createBot() {
     });
 
     bot.on('spawn', () => {
-        console.log('✅ Bot spawned. Starting AFK and Combat routines.');
+        console.log('✅ Bot spawned. Starting Advanced Routines.');
         
-        // 1. بدء روتين الحركة العشوائية
+        // تعيين الموضع الأولي للتحقق من التعليق
+        lastPosition = bot.entity.position.clone();
+
+        // 1. بدء روتين الحركة العشوائية (AFK)
         randomAFKLoop(bot);
         
         // 2. بدء روتين البحث عن الوحوش والهجوم (يفحص كل 500ms للهجوم الفوري)
         setInterval(() => lookForMobsAndAttack(bot), 500); 
+
+        // 3. بدء روتين حركة الرأس (يفحص كل 500ms)
+        setInterval(() => randomHeadLook(bot), 500);
+        
+        // 4. بدء روتين فحص التعليق (يفحص كل 5 ثوانٍ)
+        stuckCheckInterval = setInterval(() => stuckDetection(bot), 5000); 
     });
     
     // --- معالجة أخطاء إعادة الاتصال والتبديل ---
     
     const switchBot = (reason) => {
         if (currentBot) {
-            // إيقاف جميع مؤقتات الحركة والقتال قبل التبديل
+            // مسح كل المؤقتات قبل التبديل
             clearTimeout(afkLoopTimeout); 
+            clearInterval(stuckCheckInterval);
             currentBot.end(); 
             currentBot = null;
         }
         
-        // الانتقال إلى البوت التالي في القائمة
         currentBotIndex = (currentBotIndex + 1) % BOT_USERNAMES.length; 
         
         console.log(`🚨 Disconnected Reason: ${reason}. Switching to next bot in ${SWITCH_DELAY / 1000}s.`);
         console.log(`---> Next Bot Index: #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) <---`);
 
-        // الانتظار 30 ثانية قبل محاولة الاتصال بالبوت الجديد
         setTimeout(createBot, SWITCH_DELAY);
     };
 
