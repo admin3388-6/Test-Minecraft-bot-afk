@@ -1,20 +1,19 @@
-// index.js (النسخة النهائية - مع منطق الخروج الذكي ورسائل تشخيص الحركة)
+// index.js (النسخة النهائية - التحركات البشرية والتبديل والقتال)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3'); 
 
 // === إعدادات البوتات والاتصال ===
-const SERVER_HOST = 'Play-game.aternos.me';
-const SERVER_PORT = 54480;
-const SERVER_VERSION = '1.19.4';  // يجب التأكد من إصدار الخادم الفعلي
-const SWITCH_DELAY = 10000; // 10 ثوان انتظار قبل محاولة البوت التالي
-const COMBAT_RANGE = 15; // نطاق الهجوم
-const STUCK_THRESHOLD_SECONDS = 30; // مهلة التعليق
+const BOT_USERNAMES = [
+    'Player_Alpha', 'Agent_Beta', 'Unit_Gama', 'Spectr_Delta', 'Echo_Bot', 
+    'Nexus_One', 'Raid_Zero', 'Morpheus_X', 'Sky_Walker', 'Ghost_Rider'
+]; 
 
-// توليد أسماء البوتات: Onegame، Onegame2، ... Onegame10
-const BOT_USERNAMES = ['Onegame'];
-for (let i = 2; i <= 10; i++) {
-    BOT_USERNAMES.push(`Onegame${i}`);
-} 
+const SERVER_HOST = 'skydata.aternos.me';
+const SERVER_PORT = 28068;
+const SERVER_VERSION = '1.19.4'; 
+const SWITCH_DELAY = 30000; // 30 ثانية انتظار قبل محاولة البوت التالي
+const COMBAT_RANGE = 15; // نطاق الهجوم
+const STUCK_THRESHOLD_SECONDS = 30; // **>> مهلة التعليق الجديدة <<**
 
 let currentBotIndex = 0; 
 let currentBot = null; 
@@ -42,7 +41,6 @@ function randomAFKLoop(bot) {
         bot.setControlState(control, false);
     }
     
-    // الأولوية للقتال: إذا كان هناك وحش قريب، لا تدخل في حلقة AFK العشوائية
     if (bot.nearestEntity(entity => entity.type === 'mob' && bot.entity.position.distanceTo(entity.position) <= COMBAT_RANGE)) {
         clearTimeout(afkLoopTimeout); 
         return; 
@@ -111,21 +109,26 @@ async function lookForMobsAndAttack(bot) {
         });
         
     } else if (!afkLoopTimeout) {
-         randomAFKLoop(bot); // إذا لم يكن هناك هدف قتال، ابدأ AFK
+         randomAFKLoop(bot);
     }
 }
 
+// 5. دالة التحقق من التعليق والعودة إلى نقطة البداية (مُحدثة)
 function stuckDetection(bot) {
     if (!bot || !bot.entity || !lastPosition) return;
 
+    // 1. التحقق مما إذا كان البوت يحاول التحرك حالياً
     const isMoving = movementControls.some(control => bot.getControlState(control));
 
+    // 2. التحقق من التعليق: يحاول التحرك ولكن لم يتغير موقعه
     if (isMoving && bot.entity.position.distanceTo(lastPosition) < 0.1) {
         
         if (stuckCheckInterval === null) {
+            // بدأ التعليق، نبدأ المؤقت لـ 30 ثانية
             console.log(`[Stuck Check] Started ${STUCK_THRESHOLD_SECONDS}s timer.`);
             stuckCheckInterval = setTimeout(() => {
                 
+                // بعد انتهاء 30 ثانية، نتحقق مرة أخيرة
                 if (bot.entity.position.distanceTo(lastPosition) < 0.1) {
                     console.log(`⚠️ STUCK DETECTED! No movement for ${STUCK_THRESHOLD_SECONDS}s. Teleporting to spawn.`);
                     
@@ -137,62 +140,25 @@ function stuckDetection(bot) {
                     console.log("[Stuck Check] Timer expired, but bot moved just in time.");
                 }
 
+                // مسح المؤقت سواء نجح أو فشل
                 stuckCheckInterval = null; 
             }, STUCK_THRESHOLD_SECONDS * 1000); 
 
         }
     } else {
+        // إذا تحرك البوت أو لم يكن يحاول التحرك، أعد ضبط المؤقت (إذا كان قيد التشغيل)
         if (stuckCheckInterval) {
             console.log("[Stuck Check] Movement detected, resetting timer.");
             clearTimeout(stuckCheckInterval);
             stuckCheckInterval = null;
         }
     }
+    // 3. تحديث آخر موضع
     lastPosition = bot.entity.position.clone();
 }
 
 
-// ************* منطق الخروج الذكي *************
-function checkAndSwitch(bot) {
-    if (!bot || !bot.entity) return;
-
-    const connectedPlayers = Object.keys(bot.players);
-    const myBotsConnected = connectedPlayers.filter(name => BOT_USERNAMES.includes(name));
-
-    if (myBotsConnected.length > 1) {
-        
-        const isTheDesignatedBot = bot.username === BOT_USERNAMES[0]; // نختار Onegame ليكون الأهم
-
-        if (isTheDesignatedBot) {
-            console.log(`[Smart Switch] ${bot.username} is the designated keeper. Remaining connected.`);
-            return;
-        }
-
-        console.log(`🚨 [Smart Switch] Found ${myBotsConnected.length} bots connected (Target: 1). Disconnecting ${bot.username} immediately.`);
-        
-        switchBot(`Too many bots connected (Target: 1).`, true); 
-        return; 
-    }
-}
-// **********************************************
-
 // --- دوال الاتصال والتبديل ---
-
-function switchBot(reason, immediateDisconnect = false) {
-    if (currentBot) {
-        clearTimeout(afkLoopTimeout); 
-        if (stuckCheckInterval) clearTimeout(stuckCheckInterval);
-        currentBot.end(); 
-        currentBot = null;
-    }
-    
-    currentBotIndex = (currentBotIndex + 1) % BOT_USERNAMES.length; 
-    
-    console.log(`🚨 Disconnected Reason: ${reason}. Switching to next bot in ${SWITCH_DELAY / 1000}s.`);
-    console.log(`---> Next Bot Index: #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) <---`);
-
-    setTimeout(createBot, SWITCH_DELAY);
-}
 
 function createBot() {
     const username = BOT_USERNAMES[currentBotIndex];
@@ -218,32 +184,25 @@ function createBot() {
         
         lastPosition = bot.entity.position.clone();
 
-        // 1. فحص البوتات المتصلة فور التجسيد 
-        checkAndSwitch(bot); 
-        
-        // 2. بدء روتين الحركة العشوائية (AFK)
+        // 1. بدء روتين الحركة العشوائية (AFK)
         randomAFKLoop(bot);
-        console.log('🤖 ROUTINE CHECK: AFK Loop initiated.'); // رسالة تأكيد 1
         
-        // 3. بدء روتين البحث عن الوحوش والهجوم 
+        // 2. بدء روتين البحث عن الوحوش والهجوم (يفحص كل 500ms للهجوم الفوري)
         setInterval(() => lookForMobsAndAttack(bot), 500); 
-        console.log('🤖 ROUTINE CHECK: Combat Scanner activated.'); // رسالة تأكيد 2
 
-        // 4. بدء روتين حركة الرأس
+        // 3. بدء روتين حركة الرأس (يفحص كل 500ms)
         setInterval(() => randomHeadLook(bot), 500);
-        console.log('🤖 ROUTINE CHECK: Head Look initiated.'); // رسالة تأكيد 3
         
-        // 5. فحص التعليق
+        // 4. فحص التعليق (يفحص كل 5 ثوانٍ، والدالة الداخلية هي من يبدأ مؤقت الـ 30 ثانية)
         setInterval(() => stuckDetection(bot), 5000); 
-        console.log('🤖 ROUTINE CHECK: Stuck Detector running.'); // رسالة تأكيد 4
     });
     
     // --- معالجة أخطاء إعادة الاتصال والتبديل ---
     
-    const switchBotHandler = (reason) => {
+    const switchBot = (reason) => {
         if (currentBot) {
             clearTimeout(afkLoopTimeout); 
-            if (stuckCheckInterval) clearTimeout(stuckCheckInterval); 
+            if (stuckCheckInterval) clearTimeout(stuckCheckInterval); // مسح مؤقت التعليق
             currentBot.end(); 
             currentBot = null;
         }
@@ -258,11 +217,11 @@ function createBot() {
 
     bot.on('kicked', (reason) => {
         const kickMessage = (typeof reason === 'object' && reason.translate) ? reason.translate : String(reason);
-        switchBotHandler(`Kicked! Reason: ${kickMessage}`);
+        switchBot(`Kicked! Reason: ${kickMessage}`);
     });
 
     bot.on('end', (reason) => {
-        switchBotHandler(`Bot disconnected. Reason: ${reason}`);
+        switchBot(`Bot disconnected. Reason: ${reason}`);
     });
 
     bot.on('error', (err) => {
