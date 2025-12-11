@@ -1,19 +1,40 @@
-// index.js (النسخة النهائية - التحركات البشرية والتبديل والقتال)
+// index.js (النسخة النهائية - 50 بوت، دخول متدرج، إلغاء Pathfinding)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3'); 
 
 // === إعدادات البوتات والاتصال ===
-const BOT_USERNAMES = [
-    'Player_Alpha', 'Agent_Beta', 'Unit_Gama', 'Spectr_Delta', 'Echo_Bot', 
-    'Nexus_One', 'Raid_Zero', 'Morpheus_X', 'Sky_Walker', 'Ghost_Rider'
-]; 
+const SERVER_HOST = 'Play-game.aternos.me';
+const SERVER_PORT = 54480;
+const SERVER_VERSION = '1.19.4';  
 
-const SERVER_HOST = 'skydata.aternos.me';
-const SERVER_PORT = 28068;
-const SERVER_VERSION = '1.19.4'; 
-const SWITCH_DELAY = 30000; // 30 ثانية انتظار قبل محاولة البوت التالي
-const COMBAT_RANGE = 15; // نطاق الهجوم
-const STUCK_THRESHOLD_SECONDS = 30; // **>> مهلة التعليق الجديدة <<**
+const BOT_COUNT = 50; 
+const STAGGER_DELAY_MIN = 3000; 
+const STAGGER_DELAY_MAX = 8000; 
+const SWITCH_DELAY = 15000; 
+const COMBAT_RANGE = 15; 
+const STUCK_THRESHOLD_SECONDS = 30; 
+
+// قائمة كبيرة بالأسماء الواقعية والمميزة
+const BASE_USERNAMES = [
+    'SkyData', 'SkyData_One', 'SkyData_X', 'SkyData_Raid', 'SkyData_Ghost', 
+    'AetherLord', 'EnderKnight', 'NetherRex', 'LavaFlow', 'CrimsonHawk',
+    'ShadowFox', 'ViperVenom', 'IronHeart', 'StoneEdge', 'GoldRush',
+    'DarkBlade', 'SwiftArrow', 'PixelGuru', 'AlphaGamer', 'NexusCore',
+    'TitaniumX', 'VectorX', 'MysticElf', 'WitchKing', 'DragonSoul',
+    'RainDrops', 'SunRay', 'MoonLight', 'StarDust', 'CloudNine',
+    'PhoenixFly', 'Grizzly', 'StormBringer', 'ZeroCool', 'UltraMan',
+    'KingCraft', 'QueenGame', 'DukeMine', 'LordRealm', 'PrincePvP',
+    'Agent47', 'Ranger', 'Guardian', 'Sentinel', 'Spectre',
+    'HunterXD', 'NinjaFlow', 'SamuraiCode', 'GlitchBuster' 
+];
+
+// توليد أسماء فريدة لـ 50 بوت
+const BOT_USERNAMES = [];
+for (let i = 0; i < BOT_COUNT; i++) {
+    const baseName = BASE_USERNAMES[i % BASE_USERNAMES.length];
+    const uniqueName = `${baseName}${i > 0 ? i : ''}`;
+    BOT_USERNAMES.push(uniqueName);
+}
 
 let currentBotIndex = 0; 
 let currentBot = null; 
@@ -113,122 +134,155 @@ async function lookForMobsAndAttack(bot) {
     }
 }
 
-// 5. دالة التحقق من التعليق والعودة إلى نقطة البداية (مُحدثة)
+// *** دالة كشف التعليق (العودة إلى /spawn) ***
 function stuckDetection(bot) {
     if (!bot || !bot.entity || !lastPosition) return;
 
-    // 1. التحقق مما إذا كان البوت يحاول التحرك حالياً
     const isMoving = movementControls.some(control => bot.getControlState(control));
 
-    // 2. التحقق من التعليق: يحاول التحرك ولكن لم يتغير موقعه
     if (isMoving && bot.entity.position.distanceTo(lastPosition) < 0.1) {
         
         if (stuckCheckInterval === null) {
-            // بدأ التعليق، نبدأ المؤقت لـ 30 ثانية
             console.log(`[Stuck Check] Started ${STUCK_THRESHOLD_SECONDS}s timer.`);
             stuckCheckInterval = setTimeout(() => {
                 
-                // بعد انتهاء 30 ثانية، نتحقق مرة أخيرة
                 if (bot.entity.position.distanceTo(lastPosition) < 0.1) {
-                    console.log(`⚠️ STUCK DETECTED! No movement for ${STUCK_THRESHOLD_SECONDS}s. Teleporting to spawn.`);
+                    
+                    console.log(`⚠️ STUCK DETECTED! No movement for ${STUCK_THRESHOLD_SECONDS}s. Using /spawn command.`);
                     
                     for (const control of movementControls) {
                         bot.setControlState(control, false);
                     }
-                    bot.chat('/spawn'); // أمر الاستعادة
+                    
+                    bot.chat('/spawn'); // العودة إلى أمر الدردشة
+                    
                 } else {
                     console.log("[Stuck Check] Timer expired, but bot moved just in time.");
                 }
 
-                // مسح المؤقت سواء نجح أو فشل
                 stuckCheckInterval = null; 
             }, STUCK_THRESHOLD_SECONDS * 1000); 
 
         }
     } else {
-        // إذا تحرك البوت أو لم يكن يحاول التحرك، أعد ضبط المؤقت (إذا كان قيد التشغيل)
         if (stuckCheckInterval) {
             console.log("[Stuck Check] Movement detected, resetting timer.");
             clearTimeout(stuckCheckInterval);
             stuckCheckInterval = null;
         }
     }
-    // 3. تحديث آخر موضع
     lastPosition = bot.entity.position.clone();
 }
+// ***************************************************************
 
+
+// ************* منطق الخروج الذكي *************
+function checkAndSwitch(bot) {
+    if (!bot || !bot.entity) return;
+
+    const connectedPlayers = Object.keys(bot.players);
+    const myBotsConnected = connectedPlayers.filter(name => BOT_USERNAMES.includes(name));
+
+    if (myBotsConnected.length > 1) {
+        
+        const isTheDesignatedBot = bot.username === BOT_USERNAMES[0]; 
+
+        if (isTheDesignatedBot) {
+            console.log(`[Smart Switch] ${bot.username} is the designated keeper. Remaining connected.`);
+            return;
+        }
+
+        console.log(`🚨 [Smart Switch] Found ${myBotsConnected.length} bots connected (Target: 1). Disconnecting ${bot.username} immediately.`);
+        
+        switchBot(`Too many bots connected (Target: 1).`); 
+        return; 
+    }
+}
+// ***************************************************************
 
 // --- دوال الاتصال والتبديل ---
 
+function switchBot(reason) {
+    if (currentBot) {
+        clearTimeout(afkLoopTimeout); 
+        if (stuckCheckInterval) clearTimeout(stuckCheckInterval);
+        currentBot.end(); 
+        currentBot = null;
+    }
+    
+    currentBotIndex = (currentBotIndex + 1) % BOT_USERNAMES.length; 
+    
+    console.log(`🚨 Disconnected Reason: ${reason}. Switching to next bot in ${SWITCH_DELAY / 1000}s.`);
+    console.log(`---> Next Bot Index: #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) <---`);
+
+    setTimeout(createBot, SWITCH_DELAY);
+}
+
 function createBot() {
     const username = BOT_USERNAMES[currentBotIndex];
+    const waitTime = Math.random() * (STAGGER_DELAY_MAX - STAGGER_DELAY_MIN) + STAGGER_DELAY_MIN; 
+
     console.log(`--- Attempting to connect Bot #${currentBotIndex + 1}: ${username} ---`);
+    console.log(`⏳ STAGGERED LOGIN: Waiting ${Math.round(waitTime / 1000)}s before connecting...`);
 
-    const bot = mineflayer.createBot({
-        host: SERVER_HOST,
-        port: SERVER_PORT,
-        username: username,
-        version: SERVER_VERSION,
-        auth: 'offline', 
-        hideErrors: true 
-    });
+    // ****** نظام الدخول المتدرج ******
+    setTimeout(() => {
+        const bot = mineflayer.createBot({
+            host: SERVER_HOST,
+            port: SERVER_PORT,
+            username: username,
+            version: SERVER_VERSION,
+            auth: 'offline', 
+            hideErrors: true 
+        });
 
-    currentBot = bot; 
-
-    bot.on('login', () => {
-        console.log(`✅ Bot logged in as ${bot.username}`);
-    });
-
-    bot.on('spawn', () => {
-        console.log('✅ Bot spawned. Starting Advanced Routines.');
-        
-        lastPosition = bot.entity.position.clone();
-
-        // 1. بدء روتين الحركة العشوائية (AFK)
-        randomAFKLoop(bot);
-        
-        // 2. بدء روتين البحث عن الوحوش والهجوم (يفحص كل 500ms للهجوم الفوري)
-        setInterval(() => lookForMobsAndAttack(bot), 500); 
-
-        // 3. بدء روتين حركة الرأس (يفحص كل 500ms)
-        setInterval(() => randomHeadLook(bot), 500);
-        
-        // 4. فحص التعليق (يفحص كل 5 ثوانٍ، والدالة الداخلية هي من يبدأ مؤقت الـ 30 ثانية)
-        setInterval(() => stuckDetection(bot), 5000); 
-    });
+        // تم إلغاء تحميل Pathfinding
     
-    // --- معالجة أخطاء إعادة الاتصال والتبديل ---
-    
-    const switchBot = (reason) => {
-        if (currentBot) {
-            clearTimeout(afkLoopTimeout); 
-            if (stuckCheckInterval) clearTimeout(stuckCheckInterval); // مسح مؤقت التعليق
-            currentBot.end(); 
-            currentBot = null;
-        }
+        currentBot = bot; 
+
+        bot.on('login', () => {
+            console.log(`✅ Bot logged in as ${bot.username}`);
+        });
+
+        bot.on('spawn', () => {
+            console.log('✅ Bot spawned. Starting Advanced Routines.');
+            
+            lastPosition = bot.entity.position.clone();
+
+            checkAndSwitch(bot); 
+            
+            randomAFKLoop(bot);
+            console.log('🤖 ROUTINE CHECK: AFK Loop initiated.'); 
+            
+            setInterval(() => lookForMobsAndAttack(bot), 500); 
+            console.log('🤖 ROUTINE CHECK: Combat Scanner activated.'); 
+
+            setInterval(() => randomHeadLook(bot), 500);
+            console.log('🤖 ROUTINE CHECK: Head Look initiated.'); 
+            
+            setInterval(() => stuckDetection(bot), 5000); 
+            console.log('🤖 ROUTINE CHECK: Stuck Detector running.'); 
+        });
         
-        currentBotIndex = (currentBotIndex + 1) % BOT_USERNAMES.length; 
+        // --- معالجة أخطاء إعادة الاتصال والتبديل ---
         
-        console.log(`🚨 Disconnected Reason: ${reason}. Switching to next bot in ${SWITCH_DELAY / 1000}s.`);
-        console.log(`---> Next Bot Index: #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) <---`);
+        const switchBotHandler = (reason) => {
+            switchBot(reason); 
+        };
 
-        setTimeout(createBot, SWITCH_DELAY);
-    };
+        bot.on('kicked', (reason) => {
+            const kickMessage = (typeof reason === 'object' && reason.translate) ? reason.translate : String(reason);
+            switchBotHandler(`Kicked! Reason: ${kickMessage}`);
+        });
 
-    bot.on('kicked', (reason) => {
-        const kickMessage = (typeof reason === 'object' && reason.translate) ? reason.translate : String(reason);
-        switchBot(`Kicked! Reason: ${kickMessage}`);
-    });
+        bot.on('end', (reason) => {
+            switchBotHandler(`Bot disconnected. Reason: ${reason}`);
+        });
 
-    bot.on('end', (reason) => {
-        switchBot(`Bot disconnected. Reason: ${reason}`);
-    });
-
-    bot.on('error', (err) => {
-        console.log(`🛑 Bot Error: ${err.message}`);
-    });
-
-    return bot;
+        bot.on('error', (err) => {
+            console.log(`🛑 Bot Error: ${err.message}`);
+        });
+    }, waitTime); 
 }
 
 // بدء العملية بالبوت الأول
