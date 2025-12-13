@@ -3,8 +3,8 @@ const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3'); 
 
 // === إعدادات البوتات والاتصال ===
-const SERVER_HOST = 'Play-game.aternos.me';
-const SERVER_PORT = 54480;
+const SERVER_HOST = '2k-SD.aternos.me';
+const SERVER_PORT = 51547;
 const SERVER_VERSION = '1.19.4';  
 
 const BOT_COUNT = 50; 
