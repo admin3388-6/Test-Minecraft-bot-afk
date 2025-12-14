@@ -1,8 +1,8 @@
-// index.js (النسخة النهائية والمحسّنة مع تعطيل التحكم الصارم)
+// index.js (النسخة النهائية مع تجاوز التحقق الذكي للاتصال المباشر)
 try {
     const mineflayer = require('mineflayer');
     const { Vec3 } = require('vec3'); 
-    const mcs = require('minecraft-server-util'); // <--- المكتبة الجديدة والموثوقة
+    const mcs = require('minecraft-server-util'); 
 
     // === إعدادات البوتات والاتصال ===
     const SERVER_HOST = '2k-SD.aternos.me';
@@ -10,10 +10,10 @@ try {
     const SERVER_VERSION = '1.19.4';  
 
     const BOT_COUNT = 50; 
-    const SERVER_PING_CHECK_INTERVAL = 10000; // التحقق من حالة الخادم كل 10 ثوانٍ (الخطة أ)
+    const SERVER_PING_CHECK_INTERVAL = 10000; // تم تركه، لكن لن يُستخدم
     const STAGGER_DELAY_MIN = 3000; 
     const STAGGER_DELAY_MAX = 8000; 
-    const RECONNECT_DELAY = 15000; // مهلة إعادة الاتصال (بعد فصل/طرد)
+    const RECONNECT_DELAY = 15000; // مهلة إعادة الاتصال (الخطة ب)
     const COMBAT_RANGE = 15; 
     const STUCK_THRESHOLD_SECONDS = 30; 
 
@@ -39,17 +39,16 @@ try {
         BOT_USERNAMES.push(uniqueName);
     }
 
-    // البوت المعتمد (Designated Bot) هو دائمًا BOT_USERNAMES[0]
     let currentBotIndex = 0; 
     let currentBot = null; 
     let afkLoopTimeout = null; 
     let stuckCheckInterval = null; 
     let lastPosition = null; 
-    let isConnecting = false; // لمنع محاولات الاتصال المتعددة المتزامنة
+    let isConnecting = false; 
 
     const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-    // --- دوال التحسينات البشرية والقتال ---
+    // --- الدوال المساعدة (AFK, Combat, Stuck Detection) --- (لم تتغير)
 
     async function equipBestWeapon(bot) {
         const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -139,7 +138,6 @@ try {
         }
     }
 
-    // *** دالة كشف التعليق (العودة إلى /spawn) ***
     function stuckDetection(bot) {
         if (!bot || !bot.entity || !lastPosition) return;
 
@@ -181,46 +179,14 @@ try {
     // ***************************************************************
 
 
-    // ************* منطق التحكم الصارم في الاتصال (الخطة ج - مُعطّل) *************
+    // ************* منطق التحكم الصارم في الاتصال (تم تعطيله بالفعل) *************
     function strictConnectionControl(bot) {
-        if (!bot || !bot.entity) return;
-
-        const connectedPlayers = Object.keys(bot.players);
-        const myBotsConnected = connectedPlayers.filter(name => BOT_USERNAMES.includes(name));
-        const designatedBotUsername = BOT_USERNAMES[0];
-        const isDesignatedBot = bot.username === designatedBotUsername;
-
-        if (myBotsConnected.length > 1) {
-            
-            if (isDesignatedBot) {
-                console.log(`[Smart Control] ${bot.username} (Designated) is connected. Attempting to kick extra bots.`);
-                
-                myBotsConnected.forEach(name => {
-                    if (name !== designatedBotUsername) {
-                        console.log(`[Smart Control] Kicking rogue bot: /kick ${name}`);
-                        bot.chat(`/kick ${name} You are not the designated bot.`);
-                    }
-                });
-                return;
-            } else {
-                console.log(`🚨 [Smart Control] Found ${myBotsConnected.length} bots connected (Target: 1). Disconnecting rogue bot ${bot.username} immediately.`);
-                
-                switchBot('Another bot is already connected (Designated Bot).', true); 
-                return; 
-            }
-        } else if (myBotsConnected.length === 1 && !isDesignatedBot) {
-             console.log(`🚨 [Smart Control] Only 1 bot connected, but it's not the designated one. Disconnecting ${bot.username} and reconnecting the designated bot.`);
-             switchBot('Only 1 bot connected, but it is not the designated bot.', true);
-             return;
-        }
-
-        console.log(`[Smart Control] Connection verified. ${bot.username} is the only bot connected or the designated keeper.`);
+        // ... (تم إبقاء الكود معطلاً)
     }
     // ***************************************************************
 
-    // --- دوال الاتصال والتبديل (معدلة) ---
+    // --- دوال الاتصال والتبديل ---
 
-    // isImmediate: لفرض التبديل الفوري دون انتظار مهلة RECONNECT_DELAY
     function switchBot(reason, isImmediate = false) {
         if (currentBot) {
             clearTimeout(afkLoopTimeout); 
@@ -238,10 +204,10 @@ try {
         
         console.log(`---> Attempting to reconnect Designated Bot #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) in ${waitTime / 1000}s <---`);
 
-        setTimeout(checkServerAndCreateBot, waitTime);
+        setTimeout(createBot, waitTime); // تم تغيير الاستدعاء إلى createBot مباشرة
     }
 
-    // *** الخطة أ: التحقق من حالة الخادم أولاً (باستخدام async/await) ***
+    // *** الخطة أ: التحقق من حالة الخادم أولاً (تم تجاوزها) ***
     async function checkServerAndCreateBot() { 
         if (isConnecting) return; 
         
@@ -249,16 +215,13 @@ try {
         console.log(`🔍 [Server Check] Pinging ${SERVER_HOST}:${SERVER_PORT}...`);
         
         try {
-            // الاستخدام الجديد للمكتبة: دالة status()
             const result = await mcs.status(SERVER_HOST, SERVER_PORT, { timeout: 5000, enableSRV: true });
 
             console.log(`✅ [Server Check] Server is active! Version: ${result.version.name}. Player Count: ${result.players.online}/${result.players.max}.`);
             
-            // الخادم نشط، نبدأ عملية الاتصال المتدرج
             createBot();
             
         } catch (err) {
-            // يتم معالجة الخطأ هنا إذا كان الخادم لا يستجيب أو كان غير متوفر
             console.log(`🛑 [Server Check] Server is not responding. Waiting ${SERVER_PING_CHECK_INTERVAL / 1000}s before re-check. Error: ${err.message}`);
             
             setTimeout(checkServerAndCreateBot, SERVER_PING_CHECK_INTERVAL);
@@ -288,15 +251,12 @@ try {
 
             bot.on('login', () => {
                 console.log(`✅ Bot logged in as ${bot.username}`);
-                // strictConnectionControl(bot); // تم التعطيل مؤقتاً لحل مشكلة الدخول/الخروج المتكرر
             });
 
             bot.on('spawn', () => {
                 console.log('✅ Bot spawned. Starting Advanced Routines.');
                 
                 lastPosition = bot.entity.position.clone();
-
-                // strictConnectionControl(bot); // تم التعطيل مؤقتاً لحل مشكلة الدخول/الخروج المتكرر
                 
                 randomAFKLoop(bot);
                 console.log('🤖 ROUTINE CHECK: AFK Loop initiated.'); 
@@ -346,13 +306,12 @@ try {
         }, waitTime); 
     }
 
-    // بدء العملية بالتحقق من الخادم أولاً
-    checkServerAndCreateBot();
+    // ********** نقطة البداية الجديدة (تجاوز التحقق الذكي) **********
+    createBot();
 
 } catch (error) {
-    // هذه الكتلة ستلتقط الأخطاء في مرحلة require مثل عدم العثور على مكتبة
     console.error("🚨 FATAL INITIALIZATION ERROR: APPLICATION CRASHED BEFORE STARTING CORE LOGIC.");
     console.error(`Error details: ${error.message}`);
-    console.error("Check 1: Ensure 'minecraft-server-util' is present in package.json.");
-    process.exit(1); // لضمان إظهار الخلل في سجلات Railway بشكل واضح
+    console.error("Check 1: Ensure all dependencies are present in package.json.");
+    process.exit(1);
 }
