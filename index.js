@@ -1,7 +1,7 @@
-// index.js (النسخة النهائية والمحسّنة: التحقق الذكي، اتصال بوت واحد مستقر)
+// index.js (النسخة النهائية والمحسّنة مع إصلاح Ping)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3'); 
-const mcPing = require('mc-ping-updated'); // <--- المكتبة الصحيحة للتحقق من حالة الخادم (Ping)
+const mcs = require('minecraft-server-util'); // <--- المكتبة الجديدة والموثوقة
 
 // === إعدادات البوتات والاتصال ===
 const SERVER_HOST = '2k-SD.aternos.me';
@@ -48,7 +48,7 @@ let isConnecting = false; // لمنع محاولات الاتصال المتعد
 
 const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-// --- دوال التحسينات البشرية والقتال ---
+// --- دوال التحسينات البشرية والقتال (متروكة كما هي) ---
 
 async function equipBestWeapon(bot) {
     const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -181,7 +181,6 @@ function stuckDetection(bot) {
 
 
 // ************* منطق التحكم الصارم في الاتصال (الخطة ج) *************
-// يتم تشغيله عند login/spawn
 function strictConnectionControl(bot) {
     if (!bot || !bot.entity) return;
 
@@ -193,7 +192,6 @@ function strictConnectionControl(bot) {
     if (myBotsConnected.length > 1) {
         
         if (isDesignatedBot) {
-            // إذا كان البوت المعتمد متصلاً، فإنه يقوم بطرد البوتات الزائدة
             console.log(`[Smart Control] ${bot.username} (Designated) is connected. Attempting to kick extra bots.`);
             
             myBotsConnected.forEach(name => {
@@ -204,14 +202,12 @@ function strictConnectionControl(bot) {
             });
             return;
         } else {
-            // إذا لم يكن البوت المعتمد، فإنه يقطع الاتصال بنفسه فورًا
             console.log(`🚨 [Smart Control] Found ${myBotsConnected.length} bots connected (Target: 1). Disconnecting rogue bot ${bot.username} immediately.`);
             
             switchBot('Another bot is already connected (Designated Bot).', true); 
             return; 
         }
     } else if (myBotsConnected.length === 1 && !isDesignatedBot) {
-        // حالة: بوت واحد فقط متصل، ولكنه ليس البوت المعتمد (نادراً ما تحدث)
          console.log(`🚨 [Smart Control] Only 1 bot connected, but it's not the designated one. Disconnecting ${bot.username} and reconnecting the designated bot.`);
          switchBot('Only 1 bot connected, but it is not the designated bot.', true);
          return;
@@ -223,7 +219,6 @@ function strictConnectionControl(bot) {
 
 // --- دوال الاتصال والتبديل (معدلة) ---
 
-// isImmediate: لفرض التبديل الفوري دون انتظار مهلة RECONNECT_DELAY
 function switchBot(reason, isImmediate = false) {
     if (currentBot) {
         clearTimeout(afkLoopTimeout); 
@@ -232,39 +227,38 @@ function switchBot(reason, isImmediate = false) {
         currentBot = null;
     }
     
-    // نظام البوت الواحد: لا ننتقل إلى الفهرس التالي. البوت المعتمد هو دائمًا 0
     currentBotIndex = 0; 
     
     console.log(`🚨 Disconnected Reason: ${reason}.`);
     
-    const waitTime = isImmediate ? 1000 : RECONNECT_DELAY; // الانتظار لثانية واحدة للتبديل الفوري
+    const waitTime = isImmediate ? 1000 : RECONNECT_DELAY; 
     
     console.log(`---> Attempting to reconnect Designated Bot #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) in ${waitTime / 1000}s <---`);
 
     setTimeout(checkServerAndCreateBot, waitTime);
 }
 
-// *** الخطة أ: التحقق من حالة الخادم أولاً ***
-function checkServerAndCreateBot() {
+// *** الخطة أ: التحقق من حالة الخادم أولاً (باستخدام async/await) ***
+async function checkServerAndCreateBot() { // <--- تم إضافة async
     if (isConnecting) return; 
 
     console.log(`🔍 [Server Check] Pinging ${SERVER_HOST}:${SERVER_PORT}...`);
     
-    // **الإصلاح هنا:** استخدام mcPing بدلاً من mineflayer.ping
-    mcPing(SERVER_HOST, SERVER_PORT, (err, result) => { 
-        if (err || !result) {
-            console.log(`🛑 [Server Check] Server is not responding. Waiting ${SERVER_PING_CHECK_INTERVAL / 1000}s before re-check. Error: ${err ? err.message : 'Unknown'}`);
-            
-            // إذا كان الخادم لا يعمل، ننتظر مدة Check Interval ونعيد التحقق
-            setTimeout(checkServerAndCreateBot, SERVER_PING_CHECK_INTERVAL);
-            return;
-        }
+    try {
+        // **الاستخدام الجديد للمكتبة:** دالة status() تعيد وعد (Promise)
+        const result = await mcs.status(SERVER_HOST, SERVER_PORT, { timeout: 5000, enableSRV: true });
 
         console.log(`✅ [Server Check] Server is active! Version: ${result.version.name}. Player Count: ${result.players.online}/${result.players.max}.`);
         
         // الخادم نشط، نبدأ عملية الاتصال المتدرج
         createBot();
-    });
+        
+    } catch (err) {
+        // يتم معالجة الخطأ هنا إذا كان الخادم لا يستجيب أو كان غير متوفر
+        console.log(`🛑 [Server Check] Server is not responding. Waiting ${SERVER_PING_CHECK_INTERVAL / 1000}s before re-check. Error: ${err.message}`);
+        
+        setTimeout(checkServerAndCreateBot, SERVER_PING_CHECK_INTERVAL);
+    }
 }
 
 function createBot() {
@@ -317,7 +311,7 @@ function createBot() {
         
         const switchBotHandler = (reason) => {
             if (isConnecting) isConnecting = false;
-            switchBot(reason, false); // استخدام مهلة RECONNECT_DELAY الافتراضية
+            switchBot(reason, false); 
         };
 
         bot.on('kicked', (reason) => {
@@ -332,10 +326,10 @@ function createBot() {
         bot.on('error', (err) => {
             console.log(`🛑 Bot Error: ${err.message}`);
             
-            // **الخطة ب:** إذا فشل الاتصال الأولي (ECONNREFUSED، إلخ)، نقوم بالتبديل الفوري
+            // الخطة ب: إذا فشل الاتصال الأولي (ECONNREFUSED، إلخ)، نقوم بالتبديل الفوري
             if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('Timeout')) {
                  if (isConnecting) isConnecting = false;
-                 // نستخدم التبديل الفوري (isImmediate = true) لإعادة محاولة الاتصال بالبوت المعتمد
+                 // نستخدم التبديل الفوري لإعادة محاولة الاتصال بالبوت المعتمد
                  switchBot(`Connection failed immediately: ${err.code || err.message}. Retrying...`, true); 
                  return;
             }
