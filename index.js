@@ -1,7 +1,7 @@
 // index.js (النسخة النهائية والمحسّنة: التحقق الذكي، اتصال بوت واحد مستقر)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3'); 
-// Pathfinding لا يزال مدرجًا في package.json لكنه غير مستخدم هنا.
+const mcPing = require('mc-ping-updated'); // <--- المكتبة الصحيحة للتحقق من حالة الخادم (Ping)
 
 // === إعدادات البوتات والاتصال ===
 const SERVER_HOST = '2k-SD.aternos.me';
@@ -16,7 +16,7 @@ const RECONNECT_DELAY = 15000; // مهلة إعادة الاتصال (بعد ف�
 const COMBAT_RANGE = 15; 
 const STUCK_THRESHOLD_SECONDS = 30; 
 
-// قائمة بالأسماء الواقعية والمميزة (تم إبقاؤها كما هي)
+// قائمة كبيرة بالأسماء الواقعية والمميزة
 const BASE_USERNAMES = [
     'SkyData', 'SkyData_One', 'SkyData_X', 'SkyData_Raid', 'SkyData_Ghost', 
     'AetherLord', 'EnderKnight', 'NetherRex', 'LavaFlow', 'CrimsonHawk',
@@ -38,8 +38,8 @@ for (let i = 0; i < BOT_COUNT; i++) {
     BOT_USERNAMES.push(uniqueName);
 }
 
-// **تم تغيير المنطق:** البوت المعتمد (Designated Bot) هو دائمًا BOT_USERNAMES[0]
-let currentBotIndex = 0; // يبدأ دائمًا من 0
+// البوت المعتمد (Designated Bot) هو دائمًا BOT_USERNAMES[0]
+let currentBotIndex = 0; 
 let currentBot = null; 
 let afkLoopTimeout = null; 
 let stuckCheckInterval = null; 
@@ -48,7 +48,7 @@ let isConnecting = false; // لمنع محاولات الاتصال المتعد
 
 const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-// --- دوال التحسينات البشرية والقتال (تم إبقاؤها كما هي) ---
+// --- دوال التحسينات البشرية والقتال ---
 
 async function equipBestWeapon(bot) {
     const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -60,7 +60,6 @@ async function equipBestWeapon(bot) {
 }
 
 function randomAFKLoop(bot) {
-    // ... (لم يتغير) ...
     if (!bot || !bot.entity) return;
     
     for (const control of movementControls) {
@@ -96,7 +95,6 @@ function randomAFKLoop(bot) {
 }
 
 function randomHeadLook(bot) {
-    // ... (لم يتغير) ...
     if (!bot || !bot.entity) return;
 
     const yaw = bot.entity.yaw + (Math.random() * 0.5 - 0.25); 
@@ -106,7 +104,6 @@ function randomHeadLook(bot) {
 }
 
 async function lookForMobsAndAttack(bot) {
-    // ... (لم يتغير) ...
     if (!bot || !bot.entity) return;
     
     const filter = entity => (
@@ -143,7 +140,6 @@ async function lookForMobsAndAttack(bot) {
 
 // *** دالة كشف التعليق (العودة إلى /spawn) ***
 function stuckDetection(bot) {
-    // ... (لم يتغير) ...
     if (!bot || !bot.entity || !lastPosition) return;
 
     const isMoving = movementControls.some(control => bot.getControlState(control));
@@ -236,7 +232,7 @@ function switchBot(reason, isImmediate = false) {
         currentBot = null;
     }
     
-    // **نظام البوت الواحد:** لا ننتقل إلى الفهرس التالي. البوت المعتمد هو دائمًا 0
+    // نظام البوت الواحد: لا ننتقل إلى الفهرس التالي. البوت المعتمد هو دائمًا 0
     currentBotIndex = 0; 
     
     console.log(`🚨 Disconnected Reason: ${reason}.`);
@@ -250,13 +246,15 @@ function switchBot(reason, isImmediate = false) {
 
 // *** الخطة أ: التحقق من حالة الخادم أولاً ***
 function checkServerAndCreateBot() {
-    if (isConnecting) return; // منع محاولات الاتصال المتزامنة
+    if (isConnecting) return; 
 
     console.log(`🔍 [Server Check] Pinging ${SERVER_HOST}:${SERVER_PORT}...`);
     
-    mineflayer.ping(SERVER_HOST, SERVER_PORT, (err, result) => {
+    // **الإصلاح هنا:** استخدام mcPing بدلاً من mineflayer.ping
+    mcPing(SERVER_HOST, SERVER_PORT, (err, result) => { 
         if (err || !result) {
-            console.log(`🛑 [Server Check] Server is not responding. Waiting ${SERVER_PING_CHECK_INTERVAL / 1000}s before re-check.`);
+            console.log(`🛑 [Server Check] Server is not responding. Waiting ${SERVER_PING_CHECK_INTERVAL / 1000}s before re-check. Error: ${err ? err.message : 'Unknown'}`);
+            
             // إذا كان الخادم لا يعمل، ننتظر مدة Check Interval ونعيد التحقق
             setTimeout(checkServerAndCreateBot, SERVER_PING_CHECK_INTERVAL);
             return;
@@ -333,6 +331,7 @@ function createBot() {
 
         bot.on('error', (err) => {
             console.log(`🛑 Bot Error: ${err.message}`);
+            
             // **الخطة ب:** إذا فشل الاتصال الأولي (ECONNREFUSED، إلخ)، نقوم بالتبديل الفوري
             if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('Timeout')) {
                  if (isConnecting) isConnecting = false;
@@ -340,7 +339,6 @@ function createBot() {
                  switchBot(`Connection failed immediately: ${err.code || err.message}. Retrying...`, true); 
                  return;
             }
-            // للأخطاء الأخرى، نعتمد على معالج 'end' الذي سيتم تشغيله عادةً.
         });
 
         bot.on('connect', () => {
