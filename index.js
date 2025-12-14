@@ -1,7 +1,7 @@
-// index.js (النسخة النهائية والمحسّنة مع إصلاح Ping)
+// index.js (النسخة النهائية والمحسّنة مع إصلاح Ping ومنطق الثبات الكامل)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3'); 
-const mcs = require('minecraft-server-util'); // <--- المكتبة الجديدة والموثوقة
+const mcs = require('minecraft-server-util'); // <--- تم استيراد مكتبة Ping الجديدة
 
 // === إعدادات البوتات والاتصال ===
 const SERVER_HOST = '2k-SD.aternos.me';
@@ -9,7 +9,7 @@ const SERVER_PORT = 51547;
 const SERVER_VERSION = '1.19.4';  
 
 const BOT_COUNT = 50; 
-const SERVER_PING_CHECK_INTERVAL = 10000; // التحقق من حالة الخادم كل 10 ثوانٍ
+const SERVER_PING_CHECK_INTERVAL = 10000; // التحقق من حالة الخادم كل 10 ثوانٍ (الخطة أ)
 const STAGGER_DELAY_MIN = 3000; 
 const STAGGER_DELAY_MAX = 8000; 
 const RECONNECT_DELAY = 15000; // مهلة إعادة الاتصال (بعد فصل/طرد)
@@ -48,7 +48,7 @@ let isConnecting = false; // لمنع محاولات الاتصال المتعد
 
 const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-// --- دوال التحسينات البشرية والقتال (متروكة كما هي) ---
+// --- دوال التحسينات البشرية والقتال ---
 
 async function equipBestWeapon(bot) {
     const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -192,6 +192,7 @@ function strictConnectionControl(bot) {
     if (myBotsConnected.length > 1) {
         
         if (isDesignatedBot) {
+            // إذا كان البوت المعتمد متصلاً، فإنه يقوم بطرد البوتات الزائدة
             console.log(`[Smart Control] ${bot.username} (Designated) is connected. Attempting to kick extra bots.`);
             
             myBotsConnected.forEach(name => {
@@ -202,12 +203,14 @@ function strictConnectionControl(bot) {
             });
             return;
         } else {
+            // إذا لم يكن البوت المعتمد، فإنه يقطع الاتصال بنفسه فورًا
             console.log(`🚨 [Smart Control] Found ${myBotsConnected.length} bots connected (Target: 1). Disconnecting rogue bot ${bot.username} immediately.`);
             
             switchBot('Another bot is already connected (Designated Bot).', true); 
             return; 
         }
     } else if (myBotsConnected.length === 1 && !isDesignatedBot) {
+         // حالة: بوت واحد فقط متصل، ولكنه ليس البوت المعتمد (نادراً ما تحدث)
          console.log(`🚨 [Smart Control] Only 1 bot connected, but it's not the designated one. Disconnecting ${bot.username} and reconnecting the designated bot.`);
          switchBot('Only 1 bot connected, but it is not the designated bot.', true);
          return;
@@ -219,6 +222,7 @@ function strictConnectionControl(bot) {
 
 // --- دوال الاتصال والتبديل (معدلة) ---
 
+// isImmediate: لفرض التبديل الفوري دون انتظار مهلة RECONNECT_DELAY
 function switchBot(reason, isImmediate = false) {
     if (currentBot) {
         clearTimeout(afkLoopTimeout); 
@@ -227,6 +231,7 @@ function switchBot(reason, isImmediate = false) {
         currentBot = null;
     }
     
+    // نظام البوت الواحد: البوت المعتمد هو دائمًا 0
     currentBotIndex = 0; 
     
     console.log(`🚨 Disconnected Reason: ${reason}.`);
@@ -239,13 +244,14 @@ function switchBot(reason, isImmediate = false) {
 }
 
 // *** الخطة أ: التحقق من حالة الخادم أولاً (باستخدام async/await) ***
-async function checkServerAndCreateBot() { // <--- تم إضافة async
+async function checkServerAndCreateBot() { 
     if (isConnecting) return; 
-
+    
+    console.log("=== Bot Startup Initiated ==="); // نقطة تحقق جديدة
     console.log(`🔍 [Server Check] Pinging ${SERVER_HOST}:${SERVER_PORT}...`);
     
     try {
-        // **الاستخدام الجديد للمكتبة:** دالة status() تعيد وعد (Promise)
+        // الاستخدام الجديد للمكتبة: دالة status()
         const result = await mcs.status(SERVER_HOST, SERVER_PORT, { timeout: 5000, enableSRV: true });
 
         console.log(`✅ [Server Check] Server is active! Version: ${result.version.name}. Player Count: ${result.players.online}/${result.players.max}.`);
@@ -311,7 +317,7 @@ function createBot() {
         
         const switchBotHandler = (reason) => {
             if (isConnecting) isConnecting = false;
-            switchBot(reason, false); 
+            switchBot(reason, false); // استخدام مهلة RECONNECT_DELAY الافتراضية
         };
 
         bot.on('kicked', (reason) => {
