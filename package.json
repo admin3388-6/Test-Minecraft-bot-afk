@@ -18,6 +18,7 @@
   "dependencies": {
     "mineflayer": "^4.10.0", 
     "mineflayer-pathfinder": "^2.1.1", 
-    "mineflayer-pvp": "^1.2.0" 
+    "mineflayer-pvp": "^1.2.0",
+    "mc-ping-updated": "^1.0.1" 
   }
 }
