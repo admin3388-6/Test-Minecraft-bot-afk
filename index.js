@@ -1,6 +1,7 @@
-// index.js (النسخة النهائية - 50 بوت، دخول متدرج، إلغاء Pathfinding)
+// index.js (النسخة النهائية والمحسّنة: التحقق الذكي، اتصال بوت واحد مستقر)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3'); 
+// Pathfinding لا يزال مدرجًا في package.json لكنه غير مستخدم هنا.
 
 // === إعدادات البوتات والاتصال ===
 const SERVER_HOST = '2k-SD.aternos.me';
@@ -8,13 +9,14 @@ const SERVER_PORT = 51547;
 const SERVER_VERSION = '1.19.4';  
 
 const BOT_COUNT = 50; 
+const SERVER_PING_CHECK_INTERVAL = 10000; // التحقق من حالة الخادم كل 10 ثوانٍ
 const STAGGER_DELAY_MIN = 3000; 
 const STAGGER_DELAY_MAX = 8000; 
-const SWITCH_DELAY = 15000; 
+const RECONNECT_DELAY = 15000; // مهلة إعادة الاتصال (بعد فصل/طرد)
 const COMBAT_RANGE = 15; 
 const STUCK_THRESHOLD_SECONDS = 30; 
 
-// قائمة كبيرة بالأسماء الواقعية والمميزة
+// قائمة بالأسماء الواقعية والمميزة (تم إبقاؤها كما هي)
 const BASE_USERNAMES = [
     'SkyData', 'SkyData_One', 'SkyData_X', 'SkyData_Raid', 'SkyData_Ghost', 
     'AetherLord', 'EnderKnight', 'NetherRex', 'LavaFlow', 'CrimsonHawk',
@@ -36,15 +38,17 @@ for (let i = 0; i < BOT_COUNT; i++) {
     BOT_USERNAMES.push(uniqueName);
 }
 
-let currentBotIndex = 0; 
+// **تم تغيير المنطق:** البوت المعتمد (Designated Bot) هو دائمًا BOT_USERNAMES[0]
+let currentBotIndex = 0; // يبدأ دائمًا من 0
 let currentBot = null; 
 let afkLoopTimeout = null; 
 let stuckCheckInterval = null; 
 let lastPosition = null; 
+let isConnecting = false; // لمنع محاولات الاتصال المتعددة المتزامنة
 
 const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-// --- دوال التحسينات البشرية والقتال ---
+// --- دوال التحسينات البشرية والقتال (تم إبقاؤها كما هي) ---
 
 async function equipBestWeapon(bot) {
     const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -56,6 +60,7 @@ async function equipBestWeapon(bot) {
 }
 
 function randomAFKLoop(bot) {
+    // ... (لم يتغير) ...
     if (!bot || !bot.entity) return;
     
     for (const control of movementControls) {
@@ -91,6 +96,7 @@ function randomAFKLoop(bot) {
 }
 
 function randomHeadLook(bot) {
+    // ... (لم يتغير) ...
     if (!bot || !bot.entity) return;
 
     const yaw = bot.entity.yaw + (Math.random() * 0.5 - 0.25); 
@@ -100,6 +106,7 @@ function randomHeadLook(bot) {
 }
 
 async function lookForMobsAndAttack(bot) {
+    // ... (لم يتغير) ...
     if (!bot || !bot.entity) return;
     
     const filter = entity => (
@@ -136,6 +143,7 @@ async function lookForMobsAndAttack(bot) {
 
 // *** دالة كشف التعليق (العودة إلى /spawn) ***
 function stuckDetection(bot) {
+    // ... (لم يتغير) ...
     if (!bot || !bot.entity || !lastPosition) return;
 
     const isMoving = movementControls.some(control => bot.getControlState(control));
@@ -154,7 +162,7 @@ function stuckDetection(bot) {
                         bot.setControlState(control, false);
                     }
                     
-                    bot.chat('/spawn'); // العودة إلى أمر الدردشة
+                    bot.chat('/spawn'); 
                     
                 } else {
                     console.log("[Stuck Check] Timer expired, but bot moved just in time.");
@@ -176,33 +184,51 @@ function stuckDetection(bot) {
 // ***************************************************************
 
 
-// ************* منطق الخروج الذكي *************
-function checkAndSwitch(bot) {
+// ************* منطق التحكم الصارم في الاتصال (الخطة ج) *************
+// يتم تشغيله عند login/spawn
+function strictConnectionControl(bot) {
     if (!bot || !bot.entity) return;
 
     const connectedPlayers = Object.keys(bot.players);
     const myBotsConnected = connectedPlayers.filter(name => BOT_USERNAMES.includes(name));
+    const designatedBotUsername = BOT_USERNAMES[0];
+    const isDesignatedBot = bot.username === designatedBotUsername;
 
     if (myBotsConnected.length > 1) {
         
-        const isTheDesignatedBot = bot.username === BOT_USERNAMES[0]; 
-
-        if (isTheDesignatedBot) {
-            console.log(`[Smart Switch] ${bot.username} is the designated keeper. Remaining connected.`);
+        if (isDesignatedBot) {
+            // إذا كان البوت المعتمد متصلاً، فإنه يقوم بطرد البوتات الزائدة
+            console.log(`[Smart Control] ${bot.username} (Designated) is connected. Attempting to kick extra bots.`);
+            
+            myBotsConnected.forEach(name => {
+                if (name !== designatedBotUsername) {
+                    console.log(`[Smart Control] Kicking rogue bot: /kick ${name}`);
+                    bot.chat(`/kick ${name} You are not the designated bot.`);
+                }
+            });
             return;
+        } else {
+            // إذا لم يكن البوت المعتمد، فإنه يقطع الاتصال بنفسه فورًا
+            console.log(`🚨 [Smart Control] Found ${myBotsConnected.length} bots connected (Target: 1). Disconnecting rogue bot ${bot.username} immediately.`);
+            
+            switchBot('Another bot is already connected (Designated Bot).', true); 
+            return; 
         }
-
-        console.log(`🚨 [Smart Switch] Found ${myBotsConnected.length} bots connected (Target: 1). Disconnecting ${bot.username} immediately.`);
-        
-        switchBot(`Too many bots connected (Target: 1).`); 
-        return; 
+    } else if (myBotsConnected.length === 1 && !isDesignatedBot) {
+        // حالة: بوت واحد فقط متصل، ولكنه ليس البوت المعتمد (نادراً ما تحدث)
+         console.log(`🚨 [Smart Control] Only 1 bot connected, but it's not the designated one. Disconnecting ${bot.username} and reconnecting the designated bot.`);
+         switchBot('Only 1 bot connected, but it is not the designated bot.', true);
+         return;
     }
+
+    console.log(`[Smart Control] Connection verified. ${bot.username} is the only bot connected or the designated keeper.`);
 }
 // ***************************************************************
 
-// --- دوال الاتصال والتبديل ---
+// --- دوال الاتصال والتبديل (معدلة) ---
 
-function switchBot(reason) {
+// isImmediate: لفرض التبديل الفوري دون انتظار مهلة RECONNECT_DELAY
+function switchBot(reason, isImmediate = false) {
     if (currentBot) {
         clearTimeout(afkLoopTimeout); 
         if (stuckCheckInterval) clearTimeout(stuckCheckInterval);
@@ -210,19 +236,45 @@ function switchBot(reason) {
         currentBot = null;
     }
     
-    currentBotIndex = (currentBotIndex + 1) % BOT_USERNAMES.length; 
+    // **نظام البوت الواحد:** لا ننتقل إلى الفهرس التالي. البوت المعتمد هو دائمًا 0
+    currentBotIndex = 0; 
     
-    console.log(`🚨 Disconnected Reason: ${reason}. Switching to next bot in ${SWITCH_DELAY / 1000}s.`);
-    console.log(`---> Next Bot Index: #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) <---`);
+    console.log(`🚨 Disconnected Reason: ${reason}.`);
+    
+    const waitTime = isImmediate ? 1000 : RECONNECT_DELAY; // الانتظار لثانية واحدة للتبديل الفوري
+    
+    console.log(`---> Attempting to reconnect Designated Bot #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) in ${waitTime / 1000}s <---`);
 
-    setTimeout(createBot, SWITCH_DELAY);
+    setTimeout(checkServerAndCreateBot, waitTime);
+}
+
+// *** الخطة أ: التحقق من حالة الخادم أولاً ***
+function checkServerAndCreateBot() {
+    if (isConnecting) return; // منع محاولات الاتصال المتزامنة
+
+    console.log(`🔍 [Server Check] Pinging ${SERVER_HOST}:${SERVER_PORT}...`);
+    
+    mineflayer.ping(SERVER_HOST, SERVER_PORT, (err, result) => {
+        if (err || !result) {
+            console.log(`🛑 [Server Check] Server is not responding. Waiting ${SERVER_PING_CHECK_INTERVAL / 1000}s before re-check.`);
+            // إذا كان الخادم لا يعمل، ننتظر مدة Check Interval ونعيد التحقق
+            setTimeout(checkServerAndCreateBot, SERVER_PING_CHECK_INTERVAL);
+            return;
+        }
+
+        console.log(`✅ [Server Check] Server is active! Version: ${result.version.name}. Player Count: ${result.players.online}/${result.players.max}.`);
+        
+        // الخادم نشط، نبدأ عملية الاتصال المتدرج
+        createBot();
+    });
 }
 
 function createBot() {
+    isConnecting = true;
     const username = BOT_USERNAMES[currentBotIndex];
     const waitTime = Math.random() * (STAGGER_DELAY_MAX - STAGGER_DELAY_MIN) + STAGGER_DELAY_MIN; 
 
-    console.log(`--- Attempting to connect Bot #${currentBotIndex + 1}: ${username} ---`);
+    console.log(`--- Attempting to connect Designated Bot: ${username} ---`);
     console.log(`⏳ STAGGERED LOGIN: Waiting ${Math.round(waitTime / 1000)}s before connecting...`);
 
     // ****** نظام الدخول المتدرج ******
@@ -236,12 +288,11 @@ function createBot() {
             hideErrors: true 
         });
 
-        // تم إلغاء تحميل Pathfinding
-    
         currentBot = bot; 
 
         bot.on('login', () => {
             console.log(`✅ Bot logged in as ${bot.username}`);
+            strictConnectionControl(bot); // فحص مبكر بعد تسجيل الدخول
         });
 
         bot.on('spawn', () => {
@@ -249,7 +300,7 @@ function createBot() {
             
             lastPosition = bot.entity.position.clone();
 
-            checkAndSwitch(bot); 
+            strictConnectionControl(bot); // فحص نهائي بعد التفرخ
             
             randomAFKLoop(bot);
             console.log('🤖 ROUTINE CHECK: AFK Loop initiated.'); 
@@ -264,10 +315,11 @@ function createBot() {
             console.log('🤖 ROUTINE CHECK: Stuck Detector running.'); 
         });
         
-        // --- معالجة أخطاء إعادة الاتصال والتبديل ---
+        // --- معالجة أخطاء إعادة الاتصال والتبديل (الخطة ب/استقرار البوت الواحد) ---
         
         const switchBotHandler = (reason) => {
-            switchBot(reason); 
+            if (isConnecting) isConnecting = false;
+            switchBot(reason, false); // استخدام مهلة RECONNECT_DELAY الافتراضية
         };
 
         bot.on('kicked', (reason) => {
@@ -281,9 +333,22 @@ function createBot() {
 
         bot.on('error', (err) => {
             console.log(`🛑 Bot Error: ${err.message}`);
+            // **الخطة ب:** إذا فشل الاتصال الأولي (ECONNREFUSED، إلخ)، نقوم بالتبديل الفوري
+            if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('Timeout')) {
+                 if (isConnecting) isConnecting = false;
+                 // نستخدم التبديل الفوري (isImmediate = true) لإعادة محاولة الاتصال بالبوت المعتمد
+                 switchBot(`Connection failed immediately: ${err.code || err.message}. Retrying...`, true); 
+                 return;
+            }
+            // للأخطاء الأخرى، نعتمد على معالج 'end' الذي سيتم تشغيله عادةً.
         });
+
+        bot.on('connect', () => {
+            isConnecting = false; // تم الاتصال بنجاح
+        });
+
     }, waitTime); 
 }
 
-// بدء العملية بالبوت الأول
-createBot();
+// بدء العملية بالتحقق من الخادم أولاً
+checkServerAndCreateBot();
