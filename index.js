@@ -1,8 +1,8 @@
-// index.js (النسخة النهائية مع آليات التقاط الأخطاء الفادحة)
+// index.js (النسخة النهائية والمحسّنة مع تعطيل التحكم الصارم)
 try {
     const mineflayer = require('mineflayer');
     const { Vec3 } = require('vec3'); 
-    const mcs = require('minecraft-server-util'); // <--- نقطة الفشل المحتملة هنا!
+    const mcs = require('minecraft-server-util'); // <--- المكتبة الجديدة والموثوقة
 
     // === إعدادات البوتات والاتصال ===
     const SERVER_HOST = '2k-SD.aternos.me';
@@ -49,7 +49,7 @@ try {
 
     const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-    // --- دوال التحسينات البشرية والقتال (متروكة كما هي) ---
+    // --- دوال التحسينات البشرية والقتال ---
 
     async function equipBestWeapon(bot) {
         const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -181,7 +181,7 @@ try {
     // ***************************************************************
 
 
-    // ************* منطق التحكم الصارم في الاتصال (الخطة ج) *************
+    // ************* منطق التحكم الصارم في الاتصال (الخطة ج - مُعطّل) *************
     function strictConnectionControl(bot) {
         if (!bot || !bot.entity) return;
 
@@ -288,7 +288,7 @@ try {
 
             bot.on('login', () => {
                 console.log(`✅ Bot logged in as ${bot.username}`);
-                strictConnectionControl(bot); // فحص مبكر بعد تسجيل الدخول
+                // strictConnectionControl(bot); // تم التعطيل مؤقتاً لحل مشكلة الدخول/الخروج المتكرر
             });
 
             bot.on('spawn', () => {
@@ -296,7 +296,7 @@ try {
                 
                 lastPosition = bot.entity.position.clone();
 
-                strictConnectionControl(bot); // فحص نهائي بعد التفرخ
+                // strictConnectionControl(bot); // تم التعطيل مؤقتاً لحل مشكلة الدخول/الخروج المتكرر
                 
                 randomAFKLoop(bot);
                 console.log('🤖 ROUTINE CHECK: AFK Loop initiated.'); 
