@@ -1,4 +1,4 @@
-// index.js (النسخة النهائية والمستقرة مع نظام التناوب الدوري الكامل)
+// index.js (النسخة النهائية مع نظام التناوب الدوري ومراقبة الاتصال الفريد)
 try {
     const mineflayer = require('mineflayer');
     const { Vec3 } = require('vec3'); 
@@ -46,6 +46,7 @@ try {
     let stuckCheckInterval = null; 
     let lastPosition = null; 
     let isConnecting = false; 
+    let isBotActive = false; // ******* متغير جديد لمراقبة البوت النشط *******
     let combatInterval = null; 
     let headLookInterval = null; 
     let stuckInterval = null; 
@@ -54,6 +55,7 @@ try {
     const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
     // --- الدوال المساعدة (AFK, Combat, Stuck Detection) ---
+    // (جميع الدوال الفرعية لم تتغير)
     
     async function equipBestWeapon(bot) {
         const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -182,7 +184,7 @@ try {
         lastPosition = bot.entity.position.clone();
     }
     
-    // *** دالة التناوب الدوري الجديدة ***
+    // *** دالة التناوب الدوري ***
     function startForcedRotation(bot) {
         if (forcedRotationTimeout) {
             clearTimeout(forcedRotationTimeout);
@@ -197,7 +199,6 @@ try {
         
         forcedRotationTimeout = setTimeout(() => {
             console.log(`⚡ FORCED ROTATION TRIGGERED: Switching bot to simulate human disconnect.`);
-            // نستخدم التبديل العادي (isImmediate = false) لكي ينتظر مهلة RECONNECT_DELAY
             switchBot("Forced periodic rotation", false); 
         }, randomTime);
     }
@@ -243,12 +244,15 @@ try {
     function switchBot(reason, isImmediate = false) {
         cleanupRoutines(); 
         
+        // ** التحديث هنا **
+        isBotActive = false;
+        
         if (currentBot) {
             currentBot.end(); 
             currentBot = null;
         }
         
-        // الانتقال إلى البوت التالي (سيعود إلى 0 بعد البوت رقم 50)
+        // الانتقال إلى البوت التالي
         currentBotIndex = (currentBotIndex + 1) % BOT_COUNT; 
         
         console.log(`🚨 Disconnected Reason: ${reason}.`);
@@ -261,6 +265,12 @@ try {
     }
 
     function createBot() {
+        // ******* التعديل الحاسم: إذا كان هناك بوت نشط، لا تحاول الاتصال *******
+        if (isBotActive) {
+            console.log("⚠️ Connection attempt blocked: A bot is already active or connecting.");
+            return;
+        }
+        
         isConnecting = true;
         const username = BOT_USERNAMES[currentBotIndex];
         // انتظار 1 ثانية فقط للبوتات اللاحقة (لتقليل الفجوة الزمنية)
@@ -285,6 +295,7 @@ try {
 
             bot.on('login', () => {
                 console.log(`✅ Bot logged in as ${bot.username}`);
+                isBotActive = true; // ** تحديث حالة البوت النشط **
             });
 
             bot.on('spawn', () => {
@@ -292,7 +303,6 @@ try {
                 
                 lastPosition = bot.entity.position.clone();
                 
-                // بدء التناوب الدوري
                 startForcedRotation(bot);
 
                 randomAFKLoop(bot);
@@ -329,7 +339,6 @@ try {
             bot.on('error', (err) => {
                 console.log(`🛑 Bot Error: ${err.message}`);
                 
-                // التبديل الفوري عند أي خطأ في الاتصال الأولي/تسجيل الدخول
                 if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('Timeout') || err.message.includes('Login failed')) {
                      if (isConnecting) isConnecting = false;
                      // التبديل الفوري (isImmediate = true) لاستخدام البوت التالي على الفور
@@ -345,7 +354,7 @@ try {
         }, waitTime); 
     }
 
-    // ********** نقطة البداية (الاتصال المباشر) **********
+    // ********** نقطة البداية **********
     createBot();
 
 } catch (error) {
