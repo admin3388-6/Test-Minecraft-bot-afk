@@ -1,4 +1,4 @@
-// index.js (النسخة النهائية مع تجاوز التحقق الذكي للاتصال المباشر)
+// index.js (النسخة النهائية والمستقرة مع مهلة 20 ثانية وإغلاق أنظف للروتينات)
 try {
     const mineflayer = require('mineflayer');
     const { Vec3 } = require('vec3'); 
@@ -10,10 +10,9 @@ try {
     const SERVER_VERSION = '1.19.4';  
 
     const BOT_COUNT = 50; 
-    const SERVER_PING_CHECK_INTERVAL = 10000; // تم تركه، لكن لن يُستخدم
     const STAGGER_DELAY_MIN = 3000; 
     const STAGGER_DELAY_MAX = 8000; 
-    const RECONNECT_DELAY = 15000; // مهلة إعادة الاتصال (الخطة ب)
+    const RECONNECT_DELAY = 20000; // تم زيادة المهلة إلى 20 ثانية للتهدئة
     const COMBAT_RANGE = 15; 
     const STUCK_THRESHOLD_SECONDS = 30; 
 
@@ -45,10 +44,13 @@ try {
     let stuckCheckInterval = null; 
     let lastPosition = null; 
     let isConnecting = false; 
+    let combatInterval = null; // مُعرّف جديد للتحكم
+    let headLookInterval = null; // مُعرّف جديد للتحكم
+    let stuckInterval = null; // مُعرّف جديد للتحكم
 
     const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
-    // --- الدوال المساعدة (AFK, Combat, Stuck Detection) --- (لم تتغير)
+    // --- الدوال المساعدة (AFK, Combat, Stuck Detection) ---
 
     async function equipBestWeapon(bot) {
         const sword = bot.inventory.items().find(item => item.name.includes('sword'));
@@ -179,23 +181,47 @@ try {
     // ***************************************************************
 
 
-    // ************* منطق التحكم الصارم في الاتصال (تم تعطيله بالفعل) *************
-    function strictConnectionControl(bot) {
-        // ... (تم إبقاء الكود معطلاً)
+    // --- دالة تنظيف الروتينات عند الفصل ---
+    function cleanupRoutines() {
+        if (afkLoopTimeout) {
+            clearTimeout(afkLoopTimeout);
+            afkLoopTimeout = null;
+        }
+        if (stuckCheckInterval) {
+            clearTimeout(stuckCheckInterval);
+            stuckCheckInterval = null;
+        }
+        if (combatInterval) {
+            clearInterval(combatInterval);
+            combatInterval = null;
+        }
+        if (headLookInterval) {
+            clearInterval(headLookInterval);
+            headLookInterval = null;
+        }
+        if (stuckInterval) {
+            clearInterval(stuckInterval);
+            stuckInterval = null;
+        }
+        // إيقاف جميع الحركات المتبقية
+        if (currentBot) {
+            for (const control of movementControls) {
+                currentBot.setControlState(control, false);
+            }
+        }
     }
-    // ***************************************************************
+    // ------------------------------------
 
     // --- دوال الاتصال والتبديل ---
 
     function switchBot(reason, isImmediate = false) {
+        cleanupRoutines(); // تنظيف قبل إنهاء البوت
+        
         if (currentBot) {
-            clearTimeout(afkLoopTimeout); 
-            if (stuckCheckInterval) clearTimeout(stuckCheckInterval);
             currentBot.end(); 
             currentBot = null;
         }
         
-        // نظام البوت الواحد: البوت المعتمد هو دائمًا 0
         currentBotIndex = 0; 
         
         console.log(`🚨 Disconnected Reason: ${reason}.`);
@@ -204,28 +230,7 @@ try {
         
         console.log(`---> Attempting to reconnect Designated Bot #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) in ${waitTime / 1000}s <---`);
 
-        setTimeout(createBot, waitTime); // تم تغيير الاستدعاء إلى createBot مباشرة
-    }
-
-    // *** الخطة أ: التحقق من حالة الخادم أولاً (تم تجاوزها) ***
-    async function checkServerAndCreateBot() { 
-        if (isConnecting) return; 
-        
-        console.log("=== Bot Startup Initiated ==="); 
-        console.log(`🔍 [Server Check] Pinging ${SERVER_HOST}:${SERVER_PORT}...`);
-        
-        try {
-            const result = await mcs.status(SERVER_HOST, SERVER_PORT, { timeout: 5000, enableSRV: true });
-
-            console.log(`✅ [Server Check] Server is active! Version: ${result.version.name}. Player Count: ${result.players.online}/${result.players.max}.`);
-            
-            createBot();
-            
-        } catch (err) {
-            console.log(`🛑 [Server Check] Server is not responding. Waiting ${SERVER_PING_CHECK_INTERVAL / 1000}s before re-check. Error: ${err.message}`);
-            
-            setTimeout(checkServerAndCreateBot, SERVER_PING_CHECK_INTERVAL);
-        }
+        setTimeout(createBot, waitTime); 
     }
 
     function createBot() {
@@ -233,6 +238,7 @@ try {
         const username = BOT_USERNAMES[currentBotIndex];
         const waitTime = Math.random() * (STAGGER_DELAY_MAX - STAGGER_DELAY_MIN) + STAGGER_DELAY_MIN; 
 
+        console.log("=== Bot Startup Initiated ==="); 
         console.log(`--- Attempting to connect Designated Bot: ${username} ---`);
         console.log(`⏳ STAGGERED LOGIN: Waiting ${Math.round(waitTime / 1000)}s before connecting...`);
 
@@ -261,13 +267,14 @@ try {
                 randomAFKLoop(bot);
                 console.log('🤖 ROUTINE CHECK: AFK Loop initiated.'); 
                 
-                setInterval(() => lookForMobsAndAttack(bot), 500); 
+                // بدء الروتينات وتخزين مُعرّفها
+                combatInterval = setInterval(() => lookForMobsAndAttack(bot), 500); 
                 console.log('🤖 ROUTINE CHECK: Combat Scanner activated.'); 
 
-                setInterval(() => randomHeadLook(bot), 500);
+                headLookInterval = setInterval(() => randomHeadLook(bot), 500);
                 console.log('🤖 ROUTINE CHECK: Head Look initiated.'); 
                 
-                setInterval(() => stuckDetection(bot), 5000); 
+                stuckInterval = setInterval(() => stuckDetection(bot), 5000); 
                 console.log('🤖 ROUTINE CHECK: Stuck Detector running.'); 
             });
             
@@ -275,38 +282,42 @@ try {
             
             const switchBotHandler = (reason) => {
                 if (isConnecting) isConnecting = false;
-                switchBot(reason, false); // استخدام مهلة RECONNECT_DELAY الافتراضية
+                switchBot(reason, false); 
             };
 
             bot.on('kicked', (reason) => {
                 const kickMessage = (typeof reason === 'object' && reason.translate) ? reason.translate : String(reason);
+                console.log(`🚨 KICKED REASON: ${kickMessage}`); // طباعة سبب الطرد بوضوح
                 switchBotHandler(`Kicked! Reason: ${kickMessage}`);
             });
 
             bot.on('end', (reason) => {
+                // إذا كان reason هو 'quitting' أو ما شابه، فهذا إنهاء طبيعي
+                if (reason === 'quitting' || reason === 'disconnect.quitting') return; 
                 switchBotHandler(`Bot disconnected. Reason: ${reason}`);
             });
 
             bot.on('error', (err) => {
                 console.log(`🛑 Bot Error: ${err.message}`);
                 
-                // الخطة ب: إذا فشل الاتصال الأولي (ECONNREFUSED، إلخ)، نقوم بالتبديل الفوري
                 if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('Timeout')) {
                      if (isConnecting) isConnecting = false;
-                     // نستخدم التبديل الفوري لإعادة محاولة الاتصال بالبوت المعتمد
                      switchBot(`Connection failed immediately: ${err.code || err.message}. Retrying...`, true); 
                      return;
+                } else if (err.message.includes('Login failed') || err.message.includes('Client authentication failed')) {
+                     // هذا للتعامل مع أخطاء تسجيل الدخول التي قد تكون بسبب تحديث في Aternos
+                     switchBotHandler(`Login error. Retrying...`);
                 }
             });
 
             bot.on('connect', () => {
-                isConnecting = false; // تم الاتصال بنجاح
+                isConnecting = false; 
             });
 
         }, waitTime); 
     }
 
-    // ********** نقطة البداية الجديدة (تجاوز التحقق الذكي) **********
+    // ********** نقطة البداية (الاتصال المباشر) **********
     createBot();
 
 } catch (error) {
