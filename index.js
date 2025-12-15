@@ -1,4 +1,4 @@
-// index.js (النسخة النهائية والمستقرة مع مهلة 20 ثانية وإغلاق أنظف للروتينات)
+// index.js (النسخة النهائية والمستقرة مع نظام التناوب الدوري الكامل)
 try {
     const mineflayer = require('mineflayer');
     const { Vec3 } = require('vec3'); 
@@ -12,7 +12,9 @@ try {
     const BOT_COUNT = 50; 
     const STAGGER_DELAY_MIN = 3000; 
     const STAGGER_DELAY_MAX = 8000; 
-    const RECONNECT_DELAY = 20000; // تم زيادة المهلة إلى 20 ثانية للتهدئة
+    const RECONNECT_DELAY = 20000; // مهلة إعادة الاتصال بعد الفصل (20 ثانية)
+    const FORCED_SWITCH_MIN = 3600000; // 1 ساعة (للتبديل الدوري)
+    const FORCED_SWITCH_MAX = 10800000; // 3 ساعات (للتبديل الدوري)
     const COMBAT_RANGE = 15; 
     const STUCK_THRESHOLD_SECONDS = 30; 
 
@@ -44,14 +46,15 @@ try {
     let stuckCheckInterval = null; 
     let lastPosition = null; 
     let isConnecting = false; 
-    let combatInterval = null; // مُعرّف جديد للتحكم
-    let headLookInterval = null; // مُعرّف جديد للتحكم
-    let stuckInterval = null; // مُعرّف جديد للتحكم
+    let combatInterval = null; 
+    let headLookInterval = null; 
+    let stuckInterval = null; 
+    let forcedRotationTimeout = null; 
 
     const movementControls = ['forward', 'back', 'left', 'right', 'jump', 'sprint'];
 
     // --- الدوال المساعدة (AFK, Combat, Stuck Detection) ---
-
+    
     async function equipBestWeapon(bot) {
         const sword = bot.inventory.items().find(item => item.name.includes('sword'));
         if (sword) {
@@ -178,8 +181,27 @@ try {
         }
         lastPosition = bot.entity.position.clone();
     }
-    // ***************************************************************
+    
+    // *** دالة التناوب الدوري الجديدة ***
+    function startForcedRotation(bot) {
+        if (forcedRotationTimeout) {
+            clearTimeout(forcedRotationTimeout);
+            forcedRotationTimeout = null;
+        }
 
+        const randomTime = Math.random() * (FORCED_SWITCH_MAX - FORCED_SWITCH_MIN) + FORCED_SWITCH_MIN;
+        const hours = Math.floor(randomTime / 3600000);
+        const minutes = Math.floor((randomTime % 3600000) / 60000);
+
+        console.log(`🔄 FORCED ROTATION: Current bot (${bot.username}) will switch in ${hours}h ${minutes}m.`);
+        
+        forcedRotationTimeout = setTimeout(() => {
+            console.log(`⚡ FORCED ROTATION TRIGGERED: Switching bot to simulate human disconnect.`);
+            // نستخدم التبديل العادي (isImmediate = false) لكي ينتظر مهلة RECONNECT_DELAY
+            switchBot("Forced periodic rotation", false); 
+        }, randomTime);
+    }
+    // **********************************
 
     // --- دالة تنظيف الروتينات عند الفصل ---
     function cleanupRoutines() {
@@ -203,7 +225,11 @@ try {
             clearInterval(stuckInterval);
             stuckInterval = null;
         }
-        // إيقاف جميع الحركات المتبقية
+        if (forcedRotationTimeout) { 
+            clearTimeout(forcedRotationTimeout);
+            forcedRotationTimeout = null;
+        }
+        
         if (currentBot) {
             for (const control of movementControls) {
                 currentBot.setControlState(control, false);
@@ -212,23 +238,24 @@ try {
     }
     // ------------------------------------
 
-    // --- دوال الاتصال والتبديل ---
+    // --- دوال الاتصال والتبديل (تم تعديل التبديل ليدور بين جميع البوتات) ---
 
     function switchBot(reason, isImmediate = false) {
-        cleanupRoutines(); // تنظيف قبل إنهاء البوت
+        cleanupRoutines(); 
         
         if (currentBot) {
             currentBot.end(); 
             currentBot = null;
         }
         
-        currentBotIndex = 0; 
+        // الانتقال إلى البوت التالي (سيعود إلى 0 بعد البوت رقم 50)
+        currentBotIndex = (currentBotIndex + 1) % BOT_COUNT; 
         
         console.log(`🚨 Disconnected Reason: ${reason}.`);
         
         const waitTime = isImmediate ? 1000 : RECONNECT_DELAY; 
         
-        console.log(`---> Attempting to reconnect Designated Bot #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) in ${waitTime / 1000}s <---`);
+        console.log(`---> Attempting to connect Bot #${currentBotIndex + 1} (${BOT_USERNAMES[currentBotIndex]}) in ${waitTime / 1000}s <---`);
 
         setTimeout(createBot, waitTime); 
     }
@@ -236,10 +263,11 @@ try {
     function createBot() {
         isConnecting = true;
         const username = BOT_USERNAMES[currentBotIndex];
-        const waitTime = Math.random() * (STAGGER_DELAY_MAX - STAGGER_DELAY_MIN) + STAGGER_DELAY_MIN; 
+        // انتظار 1 ثانية فقط للبوتات اللاحقة (لتقليل الفجوة الزمنية)
+        const waitTime = currentBotIndex === 0 ? Math.random() * (STAGGER_DELAY_MAX - STAGGER_DELAY_MIN) + STAGGER_DELAY_MIN : 1000; 
 
         console.log("=== Bot Startup Initiated ==="); 
-        console.log(`--- Attempting to connect Designated Bot: ${username} ---`);
+        console.log(`--- Attempting to connect Bot: ${username} ---`);
         console.log(`⏳ STAGGERED LOGIN: Waiting ${Math.round(waitTime / 1000)}s before connecting...`);
 
         // ****** نظام الدخول المتدرج ******
@@ -264,10 +292,12 @@ try {
                 
                 lastPosition = bot.entity.position.clone();
                 
+                // بدء التناوب الدوري
+                startForcedRotation(bot);
+
                 randomAFKLoop(bot);
                 console.log('🤖 ROUTINE CHECK: AFK Loop initiated.'); 
                 
-                // بدء الروتينات وتخزين مُعرّفها
                 combatInterval = setInterval(() => lookForMobsAndAttack(bot), 500); 
                 console.log('🤖 ROUTINE CHECK: Combat Scanner activated.'); 
 
@@ -278,7 +308,7 @@ try {
                 console.log('🤖 ROUTINE CHECK: Stuck Detector running.'); 
             });
             
-            // --- معالجة أخطاء إعادة الاتصال والتبديل (الخطة ب/استقرار البوت الواحد) ---
+            // --- معالجة أخطاء إعادة الاتصال والتبديل ---
             
             const switchBotHandler = (reason) => {
                 if (isConnecting) isConnecting = false;
@@ -287,12 +317,11 @@ try {
 
             bot.on('kicked', (reason) => {
                 const kickMessage = (typeof reason === 'object' && reason.translate) ? reason.translate : String(reason);
-                console.log(`🚨 KICKED REASON: ${kickMessage}`); // طباعة سبب الطرد بوضوح
+                console.log(`🚨 KICKED REASON: ${kickMessage}`); 
                 switchBotHandler(`Kicked! Reason: ${kickMessage}`);
             });
 
             bot.on('end', (reason) => {
-                // إذا كان reason هو 'quitting' أو ما شابه، فهذا إنهاء طبيعي
                 if (reason === 'quitting' || reason === 'disconnect.quitting') return; 
                 switchBotHandler(`Bot disconnected. Reason: ${reason}`);
             });
@@ -300,13 +329,12 @@ try {
             bot.on('error', (err) => {
                 console.log(`🛑 Bot Error: ${err.message}`);
                 
-                if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('Timeout')) {
+                // التبديل الفوري عند أي خطأ في الاتصال الأولي/تسجيل الدخول
+                if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('Timeout') || err.message.includes('Login failed')) {
                      if (isConnecting) isConnecting = false;
-                     switchBot(`Connection failed immediately: ${err.code || err.message}. Retrying...`, true); 
+                     // التبديل الفوري (isImmediate = true) لاستخدام البوت التالي على الفور
+                     switchBot(`Connection failed immediately: ${err.code || err.message}. Switching to next bot.`, true); 
                      return;
-                } else if (err.message.includes('Login failed') || err.message.includes('Client authentication failed')) {
-                     // هذا للتعامل مع أخطاء تسجيل الدخول التي قد تكون بسبب تحديث في Aternos
-                     switchBotHandler(`Login error. Retrying...`);
                 }
             });
 
@@ -323,6 +351,5 @@ try {
 } catch (error) {
     console.error("🚨 FATAL INITIALIZATION ERROR: APPLICATION CRASHED BEFORE STARTING CORE LOGIC.");
     console.error(`Error details: ${error.message}`);
-    console.error("Check 1: Ensure all dependencies are present in package.json.");
     process.exit(1);
 }
