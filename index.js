@@ -5,8 +5,8 @@ try {
     const mcs = require('minecraft-server-util'); 
 
     // === إعدادات البوتات والاتصال ===
-    const SERVER_HOST = '2k-SD.aternos.me';
-    const SERVER_PORT = 51547;
+    const SERVER_HOST = '2k.progamer.me';
+    const SERVER_PORT = 36069;
     const SERVER_VERSION = '1.19.4';  
 
     const BOT_COUNT = 50; 
