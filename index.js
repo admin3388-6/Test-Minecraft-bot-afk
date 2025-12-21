@@ -1,38 +1,39 @@
 const mineflayer = require('mineflayer');
 
-// === الإعدادات الأساسية ===
+// === الإعدادات ===
 const SERVER_HOST = '2kskydata.progamer.me';
-const SERVER_VERSION = '1.19.4'; // نسخة الجافا المطلوبة
+const SERVER_PORT = 23170; // المنفذ الذي حددته
+const SERVER_VERSION = '1.19.4'; 
 
-// قائمة البوتات المحددة
 const BOT_NAMES = ['2kbot', 'skydatabot'];
 let currentBotIndex = 0;
 let bot = null;
-let isSwitching = false; // لمنع تداخل عمليات الاتصال
+let isAttemptingConnect = false;
 
-// توقيتات الحركة (بالملي ثانية)
+// توقيتات
 const MOVE_INTERVAL = 60000; // كل دقيقة
-const MOVE_DURATION = 5000; // لمدة 5 ثواني
+const MOVE_DURATION = 5000;  // يتحرك 5 ثواني
 const ROTATION_TIME = 3600000; // تبديل كل ساعة
 
-// متغيرات التحكم في الوقت (Intervals/Timeouts)
 let movementTimer = null;
-let stopMovementTimer = null;
 let rotationTimer = null;
 
 function createBot() {
-    if (isSwitching) return;
-    isSwitching = true;
-
+    // نظام حماية: منع دخول أكثر من بوت في نفس الوقت
+    if (bot || isAttemptingConnect) return;
+    
+    isAttemptingConnect = true;
     const username = BOT_NAMES[currentBotIndex];
-    console.log(`\n[نظام الاتصال] محاولة إدخال البوت: ${username}...`);
+    
+    console.log(`\n[${new Date().toLocaleTimeString()}] 📡 محاولة دخول: ${username}...`);
 
     bot = mineflayer.createBot({
         host: SERVER_HOST,
+        port: SERVER_PORT,
         username: username,
         version: SERVER_VERSION,
         auth: 'offline',
-        hideErrors: true
+        checkTimeoutInterval: 60000
     });
 
     setupEvents();
@@ -40,85 +41,75 @@ function createBot() {
 
 function setupEvents() {
     bot.on('login', () => {
-        console.log(`✅ [تم الدخول] البوت ${bot.username} متصل الآن.`);
-        isSwitching = false;
+        console.log(`✅ تم تسجيل الدخول: ${bot.username}`);
+        isAttemptingConnect = false;
     });
 
     bot.on('spawn', () => {
-        console.log(`🎮 [الحالة] البوت في العالم الآن. بدأت أنظمة الحماية.`);
+        console.log(`🎮 البوت متصل الآن في العالم.`);
         startRoutines();
     });
 
-    bot.on('error', (err) => {
-        console.log(`🛑 [خطأ] حدث مشكل في الاتصال: ${err.message}`);
+    bot.on('kicked', (reason) => {
+        console.log(`⚠️ تم الطرد: ${reason}`);
     });
 
-    bot.on('kicked', (reason) => {
-        console.log(`⚠️ [طرد] تم طرد البوت: ${reason}`);
+    bot.on('error', (err) => {
+        console.log(`🛑 خطأ في الاتصال: ${err.message}`);
     });
 
     bot.on('end', () => {
-        console.log(`🔌 [فصل] البوت غير متصل الآن. التبديل للبوت التالي...`);
+        console.log(`🔌 انقطع الاتصال. التجهيز لتبديل البوت...`);
         cleanupAndRotate();
     });
 }
 
-// --- نظام الحركة الذكي (Anti-AFK Detection) ---
 function startRoutines() {
-    // إلغاء أي روتينات قديمة
+    // إلغاء أي مؤقتات سابقة لتجنب التداخل
     stopRoutines();
 
-    // تشغيل نظام الحركة (كل دقيقة يتحرك 5 ثواني)
+    // 1. نظام الحركة العشوائية (كل دقيقة يتحرك 5 ثواني)
     movementTimer = setInterval(() => {
         if (!bot || !bot.entity) return;
 
         const actions = ['forward', 'back', 'left', 'right', 'jump'];
         const randomAction = actions[Math.floor(Math.random() * actions.length)];
         
-        console.log(`🏃 [حركة] البوت يقوم بحركة (${randomAction}) لمدة 5 ثوانٍ لمنع الكشف.`);
+        console.log(`🏃 حركة عشوائية: ${randomAction}`);
         bot.setControlState(randomAction, true);
-        if (Math.random() > 0.5) bot.setControlState('sprint', true);
 
-        stopMovementTimer = setTimeout(() => {
-            if (bot) {
+        setTimeout(() => {
+            if (bot && bot.setControlState) {
                 actions.forEach(a => bot.setControlState(a, false));
-                bot.setControlState('sprint', false);
-                console.log(`🛑 [توقف] البوت عاد لوضع السكون.`);
+                console.log(`🛑 توقف الحركة.`);
             }
         }, MOVE_DURATION);
-
     }, MOVE_INTERVAL);
 
-    // تشغيل مؤقت المناوبة (ساعة واحدة)
+    // 2. نظام المناوبة (تبديل البوت كل ساعة)
     rotationTimer = setTimeout(() => {
-        console.log(`🔄 [مناوبة] انتهت الساعة. جاري تبديل البوت...`);
+        console.log(`🔄 انتهت الساعة، جاري تبديل البوت الآن لتعزيز الحماية...`);
         if (bot) bot.quit();
     }, ROTATION_TIME);
 }
 
 function stopRoutines() {
     if (movementTimer) clearInterval(movementTimer);
-    if (stopMovementTimer) clearTimeout(stopMovementTimer);
     if (rotationTimer) clearTimeout(rotationTimer);
 }
 
 function cleanupAndRotate() {
     stopRoutines();
     bot = null;
-    isSwitching = false;
+    isAttemptingConnect = false;
     
-    // الانتقال للبوت التالي في القائمة
+    // الانتقال للاسم التالي
     currentBotIndex = (currentBotIndex + 1) % BOT_NAMES.length;
     
-    // انتظار بسيط لضمان خروج البوت الأول تماماً من السيرفر
-    console.log(`⏳ انتظار 10 ثوانٍ للتأكد من خلو السيرفر قبل دخول البوت القادم...`);
-    setTimeout(createBot, 10000);
+    // مهلة 30 ثانية قبل دخول البوت الثاني لضمان خروج الأول تماماً (حسب طلبك)
+    console.log(`⏳ انتظار 30 ثانية قبل إدخال البوت التالي...`);
+    setTimeout(createBot, 30000);
 }
 
-// تشغيل النظام لأول مرة
+// نقطة الانطلاق
 createBot();
-
-// التعامل مع توقف التطبيق
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
