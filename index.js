@@ -1,7 +1,7 @@
 const mineflayer = require('mineflayer');
 
 // === الإعدادات الجديدة ===
-const SERVER_HOST = 'ipsd2k.progamer.me'; // العنوان الجديد
+const SERVER_HOST = 'sd2k.progamer.me'; // العنوان الجديد
 const SERVER_PORT = 23170;
 const SERVER_VERSION = '1.19.4'; 
 
